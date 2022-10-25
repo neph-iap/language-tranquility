@@ -1,0 +1,22 @@
+{
+    "compilerOptions": {
+        "moduleResolution": "node",
+        "allowSyntheticDefaultImports": true,
+        "experimentalDecorators": true,
+        "forceConsistentCasingInFileNames": true,
+        "module": "CommonJS",
+        "noImplicitOverride": true,
+        "noImplicitReturns": true,
+        "noImplicitThis": true,
+        "removeComments": true,
+        "strict": true,
+        "strictFunctionTypes": true,
+        "strictPropertyInitialization": false,
+        "target": "esnext",
+        "rootDir": "src",
+        "outDir": "public",
+        "noImplicitAny": false,
+    },
+    "include": ["src/**/*", "src/node_modules/**/*"],
+    "exclude": ["node_modules/*"]
+}

@@ -1,0 +1,124 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "tranquility",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#functions"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#types"
+		},
+		{
+			"include": "#variables"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.tranquility",
+					"match": "\\b(else|fun|if|loop|return|until|var|void)\\b"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.tranquility",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.tranquility",
+					"match": "\\\\."
+				}
+			]
+		},
+		"functions": {
+			"patterns": [
+				{
+					"match": "\\b(\\w+)\\s*\\(",
+					"captures": {
+						"1": {
+							"name": "entity.name.function"
+						}
+					}
+				}
+			]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"match": "(-?\\d+(\\.\\d+)?)",
+					"captures": {
+						"1": {
+							"name": "constant.numeric"
+						}
+					}
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"match": "([\\+\\-&\\*%<>\\^=\\:]+)",
+					"captures": {
+						"1": {
+							"name": "keyword.operator"
+						}
+					}
+				}
+			]
+		},
+		"variables": {
+			"patterns": [
+				{
+					"match": "(\\.?[a-zA-Z](\\w)*)\\b",
+					"captures": {
+						"1": {
+							"name": "variable.name"
+						}
+					}
+				}
+			]
+		},
+		"comments": {
+			"patterns": [
+				{
+					"match": "(#[^\n]*)",
+					"captures": {
+						"1": {
+							"name": "comment"
+						}
+					}
+				}
+			]
+		},
+		"types": {
+			"patterns": [
+				{
+					"match": "\\b(string|integer)\\b",
+					"captures": {
+						"1": {
+							"name": "entity.name.type"
+						}
+					}
+				}
+			]
+		}
+	},
+	"scopeName": "source.tranquility"
+}
