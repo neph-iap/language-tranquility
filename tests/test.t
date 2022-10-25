@@ -1,3 +1,3 @@
 fun init() {
-    sprint("Hello world!\n")
+    alloc("Hello world!\n")
 }
