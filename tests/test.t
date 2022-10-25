@@ -1,3 +1,3 @@
 fun init() {
-    alloc("Hello world!\n")
+    maketable("Hello world!\n")
 }

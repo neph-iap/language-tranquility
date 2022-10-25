@@ -9,34 +9,34 @@ export function refreshDiagnostics(doc: vscode.TextDocument, tranqDiagnostics: v
 function createDiagnostic(doc: vscode.TextDocument, tranqDiagnostics: vscode.DiagnosticCollection) {
     let diagnostics: vscode.Diagnostic[] = [];
 
-    function onData(data: string): void {
-        let regex = /\:(\d+)\:/
-        let match = data.match(regex);
-        if (match) {
-            // Unresolved symbol
-            let unresolved = /unresolved\ssymbol\s(.+)$/;
-            let unresolvedMatch = data.match(unresolved);
-            if (unresolvedMatch) {
-                let lineNumber = Number(match[1]);
-                let line = doc.lineAt(lineNumber);
-                let index = line.text.indexOf(unresolvedMatch[1])
-                let range = new vscode.Range(lineNumber, index, lineNumber, index + unresolvedMatch[1].length);
-                let diagnostic = new vscode.Diagnostic(range, "Test error", vscode.DiagnosticSeverity.Error);
-                diagnostic.code = data;
-                diagnostics.push(diagnostic);
-            }
-        }
-    }
+    // function onData(data: string): void {
+    //     let regex = /\:(\d+)\:/
+    //     let match = data.match(regex);
+    //     if (match) {
+    //         // Unresolved symbol
+    //         let unresolved = /unresolved\ssymbol\s(.+)$/;
+    //         let unresolvedMatch = data.match(unresolved);
+    //         if (unresolvedMatch) {
+    //             let lineNumber = Number(match[1]);
+    //             let line = doc.lineAt(lineNumber);
+    //             let index = line.text.indexOf(unresolvedMatch[1])
+    //             let range = new vscode.Range(lineNumber, index, lineNumber, index + unresolvedMatch[1].length);
+    //             let diagnostic = new vscode.Diagnostic(range, "Test error", vscode.DiagnosticSeverity.Error);
+    //             diagnostic.code = data;
+    //             diagnostics.push(diagnostic);
+    //         }
+    //     }
+    // }
 
-    let process = cmd.execFile("~/home/bls96/tranquility/tranqc", [doc.uri.path]);
+    // let process = cmd.execFile("~/home/bls96/tranquility/tranqc", [doc.uri.path]);
 
-    process.stdout!.setEncoding('utf8');
-    process.stdout!.on('data', onData);
+    // process.stdout!.setEncoding('utf8');
+    // process.stdout!.on('data', onData);
 
-    process.stderr!.setEncoding('utf8');
-    process.stderr!.on('data', onData);
+    // process.stderr!.setEncoding('utf8');
+    // process.stderr!.on('data', onData);
 
-    process.on("close", () => { tranqDiagnostics.set(doc.uri, diagnostics); });
+    // process.on("close", () => { tranqDiagnostics.set(doc.uri, diagnostics); });
 }
 
 export function subscribeToDocumentChanges(context: vscode.ExtensionContext, tranqDiagnostics: vscode.DiagnosticCollection): void {
