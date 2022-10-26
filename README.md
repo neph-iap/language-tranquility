@@ -7,23 +7,18 @@ The extension ships with several features, including
  - Documentation hovering
  - Error/warning linting
 
-## Windows Usage
-### Setup
-If you are on Windows, you will need to open Visual Studio Code remotely on a Linux machine. You can do this with your Tux account with the following:
-1. Install the [Remote extension pack](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.vscode-remote-extensionpack) for Visual Studio Code.
-2. Click The `Open remote window` icon in the lower left corner.
-3. Click `Connect to Host...` option.
-4. Click `Add New SSH Host...`.
-5. Enter `ssh usr123@tux.cs.drexel.edu`
-6. Choose a configuration file to update (if prompted)
-
-### Usage
-The Tux address is now saved to your computer. To connect:
-1. Click The `Open remote window` icon in the lower left corner.
-2. Click `Connect to Host...` option.
-3. Click `tux.cs.drexel.edu`.
-4. A new window will open and prompt you to type in your password.
-5. Go to `File > Open File` and choose your file of choice.
+## Windows Setup
+If you are on Windows, you will need to ensure your new lines do not include carriage returns. On MacOS and Linux, new lines are written as `\n`, but on Windows they include a carriage return and are coded as `\r\n`. The Tranquility compiler is written in Linux and unlike most languages does not ignore new lines, and specifically expects `\n` characters. To set newlines to only `\n` in Visual Studio Code:
+- Navigate to `%appdata% > Code > User > settings.json`
+- Enter the following line in the top-level of the file:
+```json
+{
+    ...
+    "files.eol": "\n",
+    ...
+}
+```
+Visual Studio Code will now process new lines as `\n`. This is necessary to write Tranquility code. If you in a project that had carriage returns by default, press the `CRLF` button in the bottom right of the window to convert them to `\n`s.
 
 ## Usage
 7. Run `tranqc <filename>.t`.

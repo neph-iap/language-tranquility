@@ -19,9 +19,9 @@ class Parser {
     }
     next(expectedType, expectedValue) {
         if (expectedType && this.tokens[0].type.name !== expectedType)
-            throw new TokenError(this.tokens[0], `Error: expected type ${expectedType} but found ${this.tokens[0].type.name}`);
+            throw new TokenError(this.tokens[0], `Expected type ${expectedType} but found ${this.tokens[0].type.name}`);
         if (expectedValue && this.tokens[0].value !== expectedValue)
-            throw new TokenError(this.tokens[0], `Error: expected ${expectedValue} but found ${this.tokens[0].value}`);
+            throw new TokenError(this.tokens[0], `Expected ${expectedValue} but found ${this.tokens[0].value}`);
         return this.tokens.shift();
     }
     nextIs(expectedType, expectedValue) {

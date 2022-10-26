@@ -1,3 +1,5 @@
+import { functionDescriptions } from "./documentation";
+
 let tokenTypes: TokenType[] = [];
 
 class TokenType {
@@ -5,9 +7,9 @@ class TokenType {
     static readonly KEYWORD = new TokenType("keyword", /^(else|fun|if|loop|return|until|var)\b/);
     static readonly MINUS = new TokenType("minus", /^-/);
     static readonly EQUALS = new TokenType("equals", /^=/);
-    static readonly NEWLINE = new TokenType("newline", /^[\r\n]+/);
+    static readonly NEWLINE = new TokenType("newline", /^\n+/);
     static readonly WHITESPACE = new TokenType("whitespace", /^[ \t]+/);
-    static readonly STRING = new TokenType("string", /^"([^"]\\")*"/);
+    static readonly STRING = new TokenType("string", /^"([^"]|\\")*"/);
     static readonly INTEGER = new TokenType("integer", /^\d+/);
     static readonly LEFT_BRACE = new TokenType("left brace", /^\{/);
     static readonly RIGHT_BRACE = new TokenType("left brace", /^\}/);
@@ -15,13 +17,13 @@ class TokenType {
     static readonly RIGHT_PARENTHESES = new TokenType("right parentheses", /^\)/);
     static readonly COLON = new TokenType("colon", /^:/);
     static readonly COMMA = new TokenType("comma", /^,/);
-    static readonly COMMENT = new TokenType("comment", /^#[^\n\r]*/);
+    static readonly COMMENT = new TokenType("comment", /^#[^\n]*/);
     static readonly CHARACTER = new TokenType("character", /^'([^']|\\')'/)
     static readonly DOT = new TokenType("dot", /^\./);
 
     static readonly IDENTIFIER = new TokenType("identifier", /^[a-zA-Z_]\w*/);
 
-    static readonly UNRECOGNIZED = new TokenType("unrecognized", /^[^\n\r\s\t]+/);
+    static readonly UNRECOGNIZED = new TokenType("unrecognized", /^[^\n\t ]+/);
 
     constructor(public readonly name: string, public readonly regex: RegExp, public readonly group = 0) {
         tokenTypes.push(this);
@@ -60,15 +62,4 @@ export default function tokenize(code: string): Token[] {
         if (!matchFound) throw `Error: No match found for ${remainingCode}`;
     }
     return tokens;
-}
-
-export function getVariableNames(tokens: Token[]) {
-    let variableNames: { [key: string]: "var" | "fun" } = {};
-    for (let i = 0; i < tokens.length; i++) {
-        if (tokens[i].type.name === "keyword") {
-            if (tokens[i].value === "var") variableNames[tokens[i + 1].value] = "var";
-            else if (tokens[i].value === "fun") variableNames[tokens[i + 1].value] = "fun";
-        }
-    }
-    return variableNames;
 }

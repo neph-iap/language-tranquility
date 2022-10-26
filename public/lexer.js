@@ -1,6 +1,5 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getVariableNames = void 0;
 let tokenTypes = [];
 class TokenType {
     name;
@@ -9,9 +8,9 @@ class TokenType {
     static KEYWORD = new TokenType("keyword", /^(else|fun|if|loop|return|until|var)\b/);
     static MINUS = new TokenType("minus", /^-/);
     static EQUALS = new TokenType("equals", /^=/);
-    static NEWLINE = new TokenType("newline", /^[\r\n]+/);
+    static NEWLINE = new TokenType("newline", /^\n+/);
     static WHITESPACE = new TokenType("whitespace", /^[ \t]+/);
-    static STRING = new TokenType("string", /^"([^"]\\")*"/);
+    static STRING = new TokenType("string", /^"([^"]|\\")*"/);
     static INTEGER = new TokenType("integer", /^\d+/);
     static LEFT_BRACE = new TokenType("left brace", /^\{/);
     static RIGHT_BRACE = new TokenType("left brace", /^\}/);
@@ -19,11 +18,11 @@ class TokenType {
     static RIGHT_PARENTHESES = new TokenType("right parentheses", /^\)/);
     static COLON = new TokenType("colon", /^:/);
     static COMMA = new TokenType("comma", /^,/);
-    static COMMENT = new TokenType("comment", /^#[^\n\r]*/);
+    static COMMENT = new TokenType("comment", /^#[^\n]*/);
     static CHARACTER = new TokenType("character", /^'([^']|\\')'/);
     static DOT = new TokenType("dot", /^\./);
     static IDENTIFIER = new TokenType("identifier", /^[a-zA-Z_]\w*/);
-    static UNRECOGNIZED = new TokenType("unrecognized", /^[^\n\r\s\t]+/);
+    static UNRECOGNIZED = new TokenType("unrecognized", /^[^\n\t ]+/);
     constructor(name, regex, group = 0) {
         this.name = name;
         this.regex = regex;
@@ -65,16 +64,3 @@ function tokenize(code) {
     return tokens;
 }
 exports.default = tokenize;
-function getVariableNames(tokens) {
-    let variableNames = {};
-    for (let i = 0; i < tokens.length; i++) {
-        if (tokens[i].type.name === "keyword") {
-            if (tokens[i].value === "var")
-                variableNames[tokens[i + 1].value] = "var";
-            else if (tokens[i].value === "fun")
-                variableNames[tokens[i + 1].value] = "fun";
-        }
-    }
-    return variableNames;
-}
-exports.getVariableNames = getVariableNames;
