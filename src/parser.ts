@@ -1,12 +1,48 @@
 import * as vscode from "vscode";
-import { Token } from "./lexer";
+import { Token, tokenTypes } from "./lexer";
 
 /**
  * A node in an abstract syntax tree (or the tree itself).
  */
 interface ASTNode {
     type: string;
-    [key: string | number]: any;
+}
+
+type IdListNode = ASTNode & { value: string, token: Token, next?: IdListNode };
+
+class Scope {
+    functions: { name: string, argumentCount: number }[] = [];
+    variables: { name: string, token: Token }[] = [];
+
+    constructor(public readonly parent?: Scope) { }
+
+    get allFunctions(): { name: string, argumentCount: number }[] {
+        let all: { name: string, argumentCount: number }[] = [];
+        let scope: Scope | undefined = this;
+        while (scope) {
+            scope.functions.forEach(func => all.push(func));
+            scope = scope.parent;
+        }
+        return all;
+    }
+
+    get allVariables(): { name: string, token: Token }[] {
+        let all: { name: string, token: Token }[] = [];
+        let scope: Scope | undefined = this;
+        while (scope) {
+            scope.variables.forEach(variable => all.push(variable));
+            scope = scope.parent;
+        }
+        return all;
+    }
+
+    hasVariableWithName(name: string): boolean {
+        return this.allVariables.map(variable => variable.name).includes(name);
+    }
+
+    hasFunctionWithName(name: string): boolean {
+        return this.allFunctions.map(func => func.name).includes(name);
+    }
 }
 
 /**
@@ -31,6 +67,11 @@ export class TokenError extends Error {
  */
 export default class Parser {
 
+    /**
+     * The current scope of the parser.
+     */
+    private currentScope: Scope = new Scope();
+
     /** 
      * Creates a new parser.
      * 
@@ -46,9 +87,16 @@ export default class Parser {
      * 
      * @return The removed token.
      */
-    private next(expectedType?: string, expectedValue?: string): Token {
-        if (expectedType && this.tokens[0].type.name !== expectedType) throw new TokenError(this.tokens[0], `Expected type ${expectedType} but found ${this.tokens[0].type.name}`);
+    private next(expectedType?: keyof typeof tokenTypes, expectedValue?: string): Token {
+        if (expectedType && this.tokens[0].type !== expectedType) throw new TokenError(this.tokens[0], `Expected type ${expectedType} but found ${this.tokens[0].type}`);
         if (expectedValue && this.tokens[0].value !== expectedValue) throw new TokenError(this.tokens[0], `Expected ${expectedValue} but found ${this.tokens[0].value}`);
+
+        // If the next token is a right brace, exit the current scope and return the current scope to the parent.
+        if (this.nextIs("right brace")) this.currentScope = this.currentScope.parent!;
+
+        // If the next token is a left brace, enter a new scope with the old scope as the parent.
+        else if (this.nextIs("left brace")) this.currentScope = new Scope(this.currentScope);
+
         return this.tokens.shift()!;
     }
 
@@ -60,9 +108,9 @@ export default class Parser {
      * 
      * @return whether or not the next token matches the given type and value if given.
      */
-    private nextIs(expectedType: string, expectedValue?: string): boolean {
-        if (!expectedValue) return this.tokens[0].type.name === expectedType;
-        return this.tokens[0].type.name === expectedType && this.tokens[0].value === expectedValue;
+    private nextIs(expectedType: keyof typeof tokenTypes, expectedValue?: string): boolean {
+        if (!expectedValue) return this.tokens[0].type === expectedType;
+        return this.tokens[0].type === expectedType && this.tokens[0].value === expectedValue;
     }
 
     /**
@@ -73,9 +121,9 @@ export default class Parser {
      * 
      * @return whether or not the token after the next one matches the given type and value if given.
      */
-    private nextNextIs(expectedType: string, expectedValue?: string): boolean {
-        if (!expectedValue) return this.tokens[1].type.name === expectedType;
-        return this.tokens[1].type.name === expectedType && this.tokens[1].value === expectedValue;
+    private nextNextIs(expectedType: keyof typeof tokenTypes, expectedValue?: string): boolean {
+        if (!expectedValue) return this.tokens[1].type === expectedType;
+        return this.tokens[1].type === expectedType && this.tokens[1].value === expectedValue;
     }
 
     /**
@@ -97,9 +145,13 @@ export default class Parser {
      * @see `<fun-list>`: {@link parseFunctionList FunctionList}
      */
     parse(): ASTNode {
-        let node: ASTNode = { type: "program" };
+        let node: ASTNode & { varList?: ASTNode, funList?: ASTNode } = { type: "program" };
         if (this.nextIs("keyword", "var")) node.varList = this.parseVarList();
         if (this.nextIs("keyword", "fun")) node.funList = this.parseFunctionList();
+        else {
+            let next = this.next();
+            throw new TokenError(next, `Unexpected token "${next.value}" - Expected a function list or variable list`);
+        }
         return node;
     }
 
@@ -119,8 +171,8 @@ export default class Parser {
      * @see `<fun-decl>`: {@link parseFunctionDeclaration FunctionDeclaration}
      */
     private parseFunctionList(): ASTNode {
-        let node = this.parseFunctionDeclaration();
-        if (this.nextIs("keyword", "fun")) node.nextFunction = this.parseFunctionDeclaration();
+        let node: ASTNode & { next?: ASTNode } = this.parseFunctionDeclaration();
+        if (this.nextIs("keyword", "fun")) node.next = this.parseFunctionDeclaration();
         return node;
     }
 
@@ -139,7 +191,7 @@ export default class Parser {
      */
     private parseFunctionDeclaration(): ASTNode {
         this.next("keyword", "fun");
-        let name = this.next("identifier");
+        let name = this.next("identifier").value;
 
         this.next("left parentheses");
         let args: ASTNode | null = null;
@@ -149,11 +201,11 @@ export default class Parser {
         this.next("left brace");
         this.next("newline");
 
-        let body: ASTNode = { type: "function body" };
+        let body: ASTNode & { varList?: ASTNode, statementList?: ASTNode } = { type: "function body" };
         if (this.nextIs("keyword", "var")) body.varList = this.parseVarList();
-        if (this.nextIs("")) body.statementlist = this.parseStatementList();
+        if (!(this.nextIs("right brace") || (this.nextIs("newline") && this.nextNextIs("right brace")))) body.statementList = this.parseStatementList();
 
-        let node: ASTNode = {
+        let node: ASTNode & { name: string, body: ASTNode, arguments?: ASTNode } = {
             type: "function declaration",
             name: name,
             body: body
@@ -176,12 +228,12 @@ export default class Parser {
      * 
      * @return The parsed node.
      */
-    private parseIdentifierList(): ASTNode {
-        let identifiers: ASTNode = { type: "identifier list" };
-        identifiers.value = this.next("identifier");
+    private parseIdentifierList(): IdListNode {
+        let next = this.next("identifier");
+        let identifiers: IdListNode = { type: "identifier list", value: next.value, token: next };
         if (this.nextIs("comma")) {
             this.next("comma");
-            identifiers.nextIdentifier = this.parseIdentifierList();
+            identifiers.next = this.parseIdentifierList();
         }
         return identifiers;
     }
@@ -201,12 +253,33 @@ export default class Parser {
      * 
      * @see `<id-list>`: {@link parseIdentifierList IdentifierList}
      */
-    private parseVarList(): ASTNode {
-        let node = { type: "var list" };
+    private parseVarList(previousNode?: ASTNode): ASTNode {
+        let node: ASTNode & { idList?: IdListNode, next?: ASTNode } = { type: "var list" };
         this.next("keyword", "var");
-        node["identifier list"] = this.parseIdentifierList();
+        node.idList = this.parseIdentifierList();
         this.next("newline");
-        if (this.nextIs("keyword", "var")) node["sub var list"] = this.parseVarList();
+        if (this.nextIs("keyword", "var")) node.next = this.parseVarList(node);
+
+        // Only check variables if the node is complete, ie., all sub-nodes are generated and no sub-nodes call this
+        if (!previousNode) {
+            let variables: { name: string, token: Token }[] = [];
+            let searchingNode = node;
+            while (searchingNode) {
+                let id = searchingNode.idList!;
+                while (id) {
+                    variables.push({ name: id.value, token: id.token });
+                    id = id.next!;
+                }
+                searchingNode = searchingNode.next!;
+            }
+
+            // Add the variables to the current scope
+            variables.forEach(variable => {
+                if (this.currentScope.hasVariableWithName(variable.name)) throw new TokenError(variable.token, `Duplicate identifier "${variable.name}"`);
+                this.currentScope.variables.push({ name: variable.name, token: variable.token });
+            });
+        }
+
         return node;
     }
 
@@ -225,10 +298,10 @@ export default class Parser {
      * @see `<stmt>`: {@link parseStatement Statement}
      */
     private parseStatementList(): ASTNode {
-        let node: ASTNode = { type: "statement list" };
+        let node: ASTNode & { next?: ASTNode, statement?: ASTNode } = { type: "statement list" };
         if (this.nextIs("newline")) {
             this.next("newline");
-            node.nextStatement = this.parseStatementList();
+            node.next = this.parseStatementList();
             return node;
         }
         node.statement = this.parseStatement();
@@ -264,7 +337,7 @@ export default class Parser {
 
         // Until statement
         if (this.nextIs("keyword", "until")) {
-            let node: ASTNode = { type: "until statement" };
+            let node: ASTNode & { expression?: ASTNode } = { type: "until statement" };
             this.next("keyword", "until");
             node.expression = this.parseExpression();
             this.next("newline");
@@ -272,7 +345,7 @@ export default class Parser {
 
         // Loop statement
         if (this.nextIs("keyword", "loop")) {
-            let node: ASTNode = { type: "loop" };
+            let node: ASTNode & { body?: ASTNode } = { type: "loop" };
             this.next("keyword", "loop");
             this.next("left brace");
             this.next("newline");
@@ -283,13 +356,13 @@ export default class Parser {
         }
 
         // Return statement
-        if (this.nextIs("return")) {
-            let node: ASTNode = { type: "return statement" };
+        if (this.nextIs("keyword", "return")) {
+            let node: ASTNode & { expression?: ASTNode } = { type: "return statement" };
             if (this.nextIs("newline")) {
                 this.next("newline");
                 return node;
             }
-            node.value = this.parseExpression();
+            node.expression = this.parseExpression();
             this.next("newline");
             return node;
         }
@@ -298,7 +371,7 @@ export default class Parser {
 
         // Assignment statement
         if (this.nextIs("colon")) {
-            let node: ASTNode = { type: "assignment" };
+            let node: ASTNode & { expression1?: ASTNode, expression2?: ASTNode } = { type: "assignment" };
             node.expression1 = expression;
             node.expression2 = this.parseExpression();
             this.next("newline");
@@ -307,7 +380,7 @@ export default class Parser {
 
         // Single expression 
         if (this.nextIs("newline")) {
-            let node: ASTNode = { type: "expression statement" };
+            let node: ASTNode & { expression?: ASTNode } = { type: "expression statement" };
             node.expression = expression;
             this.next("newline");
             return node;
@@ -333,14 +406,15 @@ export default class Parser {
     private parseBinaryExpression(): ASTNode {
         let left = this.parseBitwiseComparisonExpression();
         if (this.nextIs("xor")) {
-            let operation = this.parseLiteral();
+            let operation = this.parseLiteral().token;
             let right = this.parseBitwiseComparisonExpression();
-            return {
+            let node: ASTNode & { left: ASTNode, operation: Token, right: ASTNode } = {
                 type: "binary expression",
                 left: left,
                 operation: operation,
                 right: right
             };
+            return node;
         }
         return left;
     }
@@ -363,14 +437,15 @@ export default class Parser {
     private parseBitwiseComparisonExpression(): ASTNode {
         let left = this.parseComparisonExpression();
         if (this.nextIs("bitwise comparison")) {
-            let operation = this.parseLiteral();
+            let operation = this.parseLiteral().token;
             let right = this.parseComparisonExpression();
-            return {
+            let node: ASTNode & { left: ASTNode, operation: Token, right: ASTNode } = {
                 type: "binary expression",
                 left: left,
                 operation: operation,
                 right: right
             };
+            return node;
         }
         return left;
     }
@@ -397,14 +472,15 @@ export default class Parser {
     private parseComparisonExpression(): ASTNode {
         let left = this.parseBitwiseShiftExpression();
         if (this.nextIs("comparison")) {
-            let operation = this.parseLiteral();
+            let operation = this.parseLiteral().token;
             let right = this.parseBitwiseShiftExpression();
-            return {
+            let node: ASTNode & { left: ASTNode, operation: Token, right: ASTNode } = {
                 type: "binary expression",
                 left: left,
                 operation: operation,
                 right: right
             };
+            return node;
         }
         return left;
     }
@@ -427,14 +503,15 @@ export default class Parser {
     private parseBitwiseShiftExpression(): ASTNode {
         let left = this.parseAdditiveExpression();
         if (this.nextIs("bitwise shift")) {
-            let operation = this.parseLiteral();
+            let operation = this.parseLiteral().token;
             let right = this.parseAdditiveExpression();
-            return {
+            let node: ASTNode & { left: ASTNode, operation: Token, right: ASTNode } = {
                 type: "binary expression",
                 left: left,
                 operation: operation,
                 right: right
             };
+            return node;
         }
         return left;
     }
@@ -457,14 +534,15 @@ export default class Parser {
     private parseAdditiveExpression(): ASTNode {
         let left = this.parseMultiplicativeExpression();
         if (this.nextIs("additive")) {
-            let operation = this.parseLiteral();
+            let operation = this.parseLiteral().token;
             let right = this.parseMultiplicativeExpression();
-            return {
+            let node: ASTNode & { left: ASTNode, operation: Token, right: ASTNode } = {
                 type: "binary expression",
                 left: left,
                 operation: operation,
                 right: right
             };
+            return node;
         }
         return left;
     }
@@ -488,14 +566,15 @@ export default class Parser {
     private parseMultiplicativeExpression(): ASTNode {
         let left = this.parseUnaryExpression();
         if (this.nextIs("multiplicative")) {
-            let operation = this.parseLiteral();
+            let operation = this.parseLiteral().token;
             let right = this.parseUnaryExpression();
-            return {
+            let node: ASTNode & { left: ASTNode, operation: Token, right: ASTNode } = {
                 type: "binary expression",
                 left: left,
                 operation: operation,
                 right: right
             };
+            return node;
         }
         return left;
     }
@@ -523,47 +602,52 @@ export default class Parser {
         if (this.nextIs("identifier") && this.nextNextIs("left parentheses")) {
             let literal = this.parseLiteral();
             this.next("left parentheses");
-            let node: ASTNode = { type: "function call" };
+            let node: ASTNode & { name?: string, arguments?: ASTNode } = { type: "function call" };
             node.name = literal.value;
             node.arguments = this.parseExpressionList();
-            this.next("right parenthses");
+            this.next("right parentheses");
             return node;
         }
 
         // Literal Expression
-        if (this.nextIs("integer") || this.nextIs("character") || this.nextIs("string") || this.nextIs("identifier")) {
+        if (this.nextIs("integer") || this.nextIs("character") || this.nextIs("string")) {
             return this.parseLiteral();
+        }
+
+        // Identifier
+        if (this.nextIs("identifier")) {
+            let identifier = this.parseLiteral();
+            if (!this.currentScope.hasVariableWithName(identifier.value)) throw new TokenError(identifier.token, `Variable "${identifier.value}" is not defined.`);
+            return identifier;
         }
 
         // Parenthesized expression
         if (this.nextIs("left parentheses")) {
             this.next("left parentheses");
-            let node: ASTNode = { type: "expression" };
-            if (!this.nextIs("right parentheses")) {
-                node.expressionList = this.parseExpressionList();
-            }
+            let node: ASTNode & { expressionList?: ASTNode } = { type: "expression" };
+            if (!this.nextIs("right parentheses")) node.expressionList = this.parseExpressionList();
             this.next("right parentheses");
             return node;
         }
 
         // Dereferencing
         if (this.nextIs("dot")) {
-            let node: ASTNode = { type: "unary operation expression" };
-            node.operation = this.next("dot");
+            let node: ASTNode & { operation?: string, expression?: ASTNode } = { type: "unary operation expression" };
+            node.operation = this.next("dot").value;
             node.expression = this.parseExpression();
             return node;
         }
 
         // Unary negation
         if (this.nextIs("minus")) {
-            let node: ASTNode = { type: "negation" };
+            let node: ASTNode & { expression?: ASTNode } = { type: "negation" };
             this.next("minus");
             node.expression = this.parseExpression();
         }
 
         // Bitwise negation
         if (this.nextIs("bitwise not")) {
-            let node: ASTNode = { type: "bitwise negation" };
+            let node: ASTNode & { expression?: ASTNode } = { type: "bitwise negation" };
             this.next("bitwise not");
             node.expression = this.parseExpression();
         }
@@ -571,21 +655,22 @@ export default class Parser {
         throw new TokenError(this.tokens[0], `Unexpected token: ${this.next().value}`);
     }
 
-    private parseLiteral(): ASTNode {
-        return { type: this.next().type.name, value: this.next().value };
+    private parseLiteral(): ASTNode & { value: string, token: Token } {
+        let next = this.next();
+        return { type: next.type, value: next.value, token: next };
     }
 
     private parseExpressionList(): ASTNode {
-        let expression = this.parseExpression();
+        let expression: ASTNode & { next?: ASTNode } = this.parseExpression();
         if (this.nextIs("comma")) {
             this.next("comma");
-            expression.nextExpression = this.parseExpression();
+            expression.next = this.parseExpression();
         }
         return expression;
     }
 
     private parseIfStatement(): ASTNode {
-        let node: ASTNode = { type: "if statement" };
+        let node: ASTNode & { condition?: ASTNode, body?: ASTNode, elseBody?: ASTNode } = { type: "if statement" };
         this.next("keyword", "if");
         node.condition = this.parseExpression();
         this.next("left brace");

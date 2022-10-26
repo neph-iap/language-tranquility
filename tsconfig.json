@@ -5,6 +5,7 @@
         "experimentalDecorators": true,
         "forceConsistentCasingInFileNames": true,
         "module": "CommonJS",
+        "noImplicitAny": true,
         "noImplicitOverride": true,
         "noImplicitReturns": true,
         "noImplicitThis": true,
@@ -15,7 +16,6 @@
         "target": "esnext",
         "rootDir": "src",
         "outDir": "public",
-        "noImplicitAny": false,
     },
     "include": ["src/**/*", "src/node_modules/**/*"],
     "exclude": ["node_modules/*"]

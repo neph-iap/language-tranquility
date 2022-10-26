@@ -11,9 +11,9 @@ The extension ships with several features, including
     - Errors
         - Unrecognized token type
         - Unexpected token type
-        - Referencing an identifier that is unknown
+        - Referencing an variable that is not defined
         - Referencing a variable that has not been assigned
-        - Duplicate identifier names (including built-in functions)
+        - Duplicate identifier names (including naming a function to the name of a built-in function)
     - Warnings
         - Unused variables
 

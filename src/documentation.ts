@@ -24,6 +24,7 @@ export let functionDescriptions = {
 };
 
 export let keywordDescriptions = {
+    else: '\n```\nelse "{" "\\n" <stmt-list> "}" "\\n" | \nelse <if-stmt>\n```\nA list of statements to be executed if the proceeding if statement\'s condition is false.',
     fun: "\n```\nfun <name: Identifier>\n```\nDefines a function with the name `name`",
     var: "\n```\nvar <name: Identifier>\n```\nDefines a variable with the name `name`"
 };

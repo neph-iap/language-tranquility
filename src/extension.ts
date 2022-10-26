@@ -13,7 +13,7 @@ export function activate(context: vscode.ExtensionContext): void {
             let range = document.getWordRangeAtPosition(position);
             let word = document.getText(range);
 
-            if (Object.keys(allHoverDescriptions).includes(word)) return { contents: [allHoverDescriptions[word]] };
+            if (Object.keys(allHoverDescriptions).includes(word)) return { contents: [allHoverDescriptions[word as keyof typeof allHoverDescriptions]] };
             return null;
         }
     });

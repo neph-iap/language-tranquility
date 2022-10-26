@@ -12,7 +12,7 @@ function refreshDiagnostics(doc, tranqDiagnostics) {
         let tokens = (0, lexer_1.default)(doc.getText());
         for (let i = 0; i < tokens.length; i++) {
             let token = tokens[i];
-            if (token.type.name === "unrecognized") {
+            if (token.type === "unrecognized") {
                 if (/^;+$/.test(token.value))
                     createTokenDiagnostic(diagnostics, token, `Semicolons are not allowed in Tranquility. Simply end statements with a new line.`, vscode.DiagnosticSeverity.Error);
                 else if (/^\r+$/.test(token.value))
@@ -21,7 +21,8 @@ function refreshDiagnostics(doc, tranqDiagnostics) {
                     createTokenDiagnostic(diagnostics, token, `Unrecognized token "${token.value}"`, vscode.DiagnosticSeverity.Error);
             }
         }
-        new parser_1.default(tokens).parse();
+        let AST = new parser_1.default(tokens).parse();
+        console.log(AST);
     }
     catch (error) {
         if (error instanceof parser_1.TokenError)

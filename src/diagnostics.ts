@@ -12,27 +12,10 @@ export function refreshDiagnostics(doc: vscode.TextDocument, tranqDiagnostics: v
         // Tokenize the code
         let tokens = tokenize(doc.getText());
 
-        // Error unrecognized identifiers
-        // let variables = getVariableNames(tokens, diagnostics);
-        // let keys = Object.keys(variables);
-        // tokens.filter(token => token.type.name === "identifier").forEach(token => {
-        //     if (!keys.includes(token.value)) createTokenDiagnostic(diagnostics, token, `${token.value} is not defined.`, vscode.DiagnosticSeverity.Error);
-        // });
-
-        // // Warn unused variables
-        // let counts = new Map<string, { token: Token, count: number }>();
-        // tokens.filter(token => token.type.name === "identifier").forEach(token => {
-        //     counts.set(token.value, { token: token, count: counts.has(token.value) ? counts.get(token.value)!.count + 1 : 1 });
-        // });
-        // let builtins = Object.keys(functionDescriptions);
-        // for (let [variableName, countObject] of counts) {
-        //     if (countObject.count === 1 && !builtins.includes(variableName)) createTokenDiagnostic(diagnostics, countObject.token, `Variable "${variableName}" is unused.`, vscode.DiagnosticSeverity.Warning);
-        // }
-
         // Error unrecognized tokens
         for (let i = 0; i < tokens.length; i++) {
             let token = tokens[i];
-            if (token.type.name === "unrecognized") {
+            if (token.type === "unrecognized") {
                 if (/^;+$/.test(token.value)) createTokenDiagnostic(diagnostics, token, `Semicolons are not allowed in Tranquility. Simply end statements with a new line.`, vscode.DiagnosticSeverity.Error);
                 else if (/^\r+$/.test(token.value)) createTokenDiagnostic(diagnostics, token, `Carriage returns are not allowed in Tranquility. Read the README to learn how to remove them.`, vscode.DiagnosticSeverity.Error);
                 else createTokenDiagnostic(diagnostics, token, `Unrecognized token "${token.value}"`, vscode.DiagnosticSeverity.Error);
@@ -40,7 +23,8 @@ export function refreshDiagnostics(doc: vscode.TextDocument, tranqDiagnostics: v
         }
 
         // Check for parsing errors
-        new Parser(tokens).parse();
+        let AST = new Parser(tokens).parse();
+        console.log(AST);
     }
 
     catch (error) {
