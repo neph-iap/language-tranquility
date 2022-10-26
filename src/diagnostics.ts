@@ -5,9 +5,9 @@ import Parser, { TokenError } from "./parser";
 
 export function refreshDiagnostics(doc: vscode.TextDocument, tranqDiagnostics: vscode.DiagnosticCollection): void {
     if (!/.t(ranq)?$/i.test(doc.uri.path)) return;
-    
+
     let diagnostics: vscode.Diagnostic[] = [];
-    
+
     try {
         // Tokenize the code
         let tokens = tokenize(doc.getText());
@@ -41,9 +41,9 @@ export function refreshDiagnostics(doc: vscode.TextDocument, tranqDiagnostics: v
 
         // Check for parsing errors
         new Parser(tokens).parse();
-    } 
-    
-    catch(error) {
+    }
+
+    catch (error) {
         // Handle token errors as diagnostics
         if (error instanceof TokenError) createTokenDiagnostic(diagnostics, error.token, error.message, error.severity);
         else console.log(error);
@@ -54,7 +54,7 @@ export function refreshDiagnostics(doc: vscode.TextDocument, tranqDiagnostics: v
 
 export function createTokenDiagnostic(diagnostics: vscode.Diagnostic[], token: Token, message: string, severity: vscode.DiagnosticSeverity = vscode.DiagnosticSeverity.Error): void {
     let start: string;
-    switch(severity) {
+    switch (severity) {
         case vscode.DiagnosticSeverity.Error: start = "❌ Error: "; break;
         case vscode.DiagnosticSeverity.Warning: start = "⚠️ Warning: "; break;
         case vscode.DiagnosticSeverity.Information: start = "🔵 Info: "; break;
@@ -85,21 +85,31 @@ export function subscribeToDocumentChanges(context: vscode.ExtensionContext, tra
 }
 
 function getVariableNames(tokens: Token[], diagnostics: vscode.Diagnostic[]) {
-    let variableNames: { [key: string]: "var" | "fun" } = {};
-    Object.keys(functionDescriptions).forEach(func => variableNames[func] = "fun");
+    let variableNames: { [key: string]: { type: "var" | "fun", isAssigned: boolean } } = {};
+    Object.keys(functionDescriptions).forEach(func => variableNames[func] = { type: "fun", isAssigned: true });
     for (let i = 0; i < tokens.length; i++) {
         let token = tokens[i];
         let nextToken = tokens[i + 1];
+        let lastToken = tokens[i - 1];
+
         if (token.type.name === "keyword") {
             if (token.value === "var") {
-                if (Object.keys(variableNames).includes(nextToken.value)) createTokenDiagnostic(diagnostics, nextToken, `Variable "${nextToken.value}" already exists. To reassign it, use \`${nextToken.value} : <value>\`"`, vscode.DiagnosticSeverity.Error);
-                variableNames[nextToken.value] = "var";
+                if (Object.keys(variableNames).includes(nextToken.value)) createTokenDiagnostic(diagnostics, nextToken, `Variable "${nextToken.value}" already exists. To reassign it, use \`${nextToken.value} : <value>\``, vscode.DiagnosticSeverity.Error);
+                variableNames[nextToken.value] = { type: "var", isAssigned: false };
             }
             else if (token.value === "fun") {
-                if (Object.keys(functionDescriptions).includes(nextToken.value) && nextToken.value !== "init") createTokenDiagnostic(diagnostics, nextToken, `Error: function ${nextToken.value} already exists as a built-in function. Choose a different function name."`, vscode.DiagnosticSeverity.Error);
-                else if (Object.keys(variableNames).includes(nextToken.value) && nextToken.value !== "init") createTokenDiagnostic(diagnostics, nextToken, `Function ${nextToken.value} already exists. Either rename the duplicate or choose a different name for this function."`, vscode.DiagnosticSeverity.Error);
-                variableNames[nextToken.value] = "fun";
+                if (Object.keys(functionDescriptions).includes(nextToken.value) && nextToken.value !== "init") createTokenDiagnostic(diagnostics, nextToken, `Error: function ${nextToken.value} already exists as a built-in function. Choose a different function name.`, vscode.DiagnosticSeverity.Error);
+                else if (Object.keys(variableNames).includes(nextToken.value) && nextToken.value !== "init") createTokenDiagnostic(diagnostics, nextToken, `Function ${nextToken.value} already exists. Either rename the duplicate or choose a different name for this function.`, vscode.DiagnosticSeverity.Error);
+                variableNames[nextToken.value] = { type: "fun", isAssigned: true };
             }
+        }
+
+        else if (token.type.name === "identifier" && nextToken?.type.name === "colon") {
+            variableNames[token.value].isAssigned = true;
+        }
+
+        else if (token.type.name === "identifier" && !(lastToken?.type.name === "keyword" && lastToken?.value === "var")) {
+            if (!variableNames[token.value].isAssigned) createTokenDiagnostic(diagnostics, token, `No value has been assigned to the memory location "${token.value}". To assign it, use \n\`${token.value} : <expr>\``, vscode.DiagnosticSeverity.Error);
         }
     }
     return variableNames;

@@ -9,6 +9,9 @@
 			"include": "#strings"
 		},
 		{
+			"include": "#characters"
+		},
+		{
 			"include": "#builtins"
 		},
 		{
@@ -50,6 +53,17 @@
 				}
 			]
 		},
+		"characters": {
+			"name": "string.quoted.single",
+			"begin": "'",
+			"end": "'",
+			"patterns": [
+				{
+					"name": "constant.character.escape.tranquility",
+					"match": "\\\\."
+				}
+			]
+		},
 		"functions": {
 			"patterns": [
 				{
@@ -77,7 +91,7 @@
 		"operators": {
 			"patterns": [
 				{
-					"match": "([\\+\\-&\\*%<>\\^=:]+)",
+					"match": "([\\.\\+\\-&\\*%<>\\^=:]+)",
 					"captures": {
 						"1": {
 							"name": "constant.character.escape"
@@ -89,7 +103,7 @@
 		"variables": {
 			"patterns": [
 				{
-					"match": "(\\.?[a-zA-Z](\\w)*)\\b",
+					"match": "([a-zA-Z](\\w)*)\\b",
 					"captures": {
 						"1": {
 							"name": "variable.name"

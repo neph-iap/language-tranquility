@@ -5,7 +5,17 @@ The `language-tranquility` extension for Visual Studio Code provides language su
 The extension ships with several features, including
  - Syntax highlighting
  - Documentation hovering
- - Error/warning linting
+    - Docuentation for built-in functions
+    - Documentation for reserved keywords
+ - Linting
+    - Errors
+        - Unrecognized token type
+        - Unexpected token type
+        - Referencing an identifier that is unknown
+        - Referencing a variable that has not been assigned
+        - Duplicate identifier names (including built-in functions)
+    - Warnings
+        - Unused variables
 
 ## Windows Setup
 If you are on Windows, you will need to ensure your new lines do not include carriage returns. On MacOS and Linux, new lines are written as `\n`, but on Windows they include a carriage return and are coded as `\r\n`. The Tranquility compiler is written in Linux and unlike most languages does not ignore new lines, and specifically expects `\n` characters. To set newlines to only `\n` in Visual Studio Code:
@@ -18,7 +28,7 @@ If you are on Windows, you will need to ensure your new lines do not include car
     ...
 }
 ```
-Visual Studio Code will now process new lines as `\n`. This is necessary to write Tranquility code. If you in a project that had carriage returns by default, press the `CRLF` button in the bottom right of the window to convert them to `\n`s.
+Visual Studio Code will now process new lines as `\n`. This is necessary to write Tranquility code. If you're in an existing project that had carriage returns by default, press the `CRLF` button in the bottom right of the window and switch to `LF`.
 
 ## Usage
 7. Run `tranqc <filename>.t`.
