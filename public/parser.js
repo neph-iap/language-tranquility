@@ -29,6 +29,11 @@ class Parser {
             return this.tokens[0].type.name === expectedType;
         return this.tokens[0].type.name === expectedType && this.tokens[0].value === expectedValue;
     }
+    nextNextIs(expectedType, expectedValue) {
+        if (!expectedValue)
+            return this.tokens[1].type.name === expectedType;
+        return this.tokens[1].type.name === expectedType && this.tokens[1].value === expectedValue;
+    }
     parse() {
         let node = { type: "program" };
         if (this.nextIs("keyword", "var"))
@@ -140,21 +145,105 @@ class Parser {
         }
         throw new TokenError(this.tokens[0], `Unexpected token: ${this.next().value}`);
     }
-    parseExpression() {
-        if (this.nextIs("integer") || this.nextIs("character") || this.nextIs("string")) {
-            return this.parseLiteral();
+    parseBinaryExpression() {
+        let left = this.parseBitwiseComparisonExpression();
+        if (this.nextIs("xor")) {
+            let operation = this.parseLiteral();
+            let right = this.parseBitwiseComparisonExpression();
+            return {
+                type: "binary expression",
+                left: left,
+                operation: operation,
+                right: right
+            };
         }
-        if (this.nextIs("identifier")) {
-            let identifier = this.next("identifier");
-            if (this.nextIs("left parentheses")) {
-                this.next("left parentheses");
-                let node = { type: "function call" };
-                node.name = identifier;
-                node.arguments = this.parseExpressionList();
-                this.next("right parenthses");
-                return node;
-            }
-            return { type: "identifier", value: identifier.value };
+        return left;
+    }
+    parseBitwiseComparisonExpression() {
+        let left = this.parseComparisonExpression();
+        if (this.nextIs("bitwise comparison")) {
+            let operation = this.parseLiteral();
+            let right = this.parseComparisonExpression();
+            return {
+                type: "binary expression",
+                left: left,
+                operation: operation,
+                right: right
+            };
+        }
+        return left;
+    }
+    parseComparisonExpression() {
+        let left = this.parseBitwiseShiftExpression();
+        if (this.nextIs("comparison")) {
+            let operation = this.parseLiteral();
+            let right = this.parseBitwiseShiftExpression();
+            return {
+                type: "binary expression",
+                left: left,
+                operation: operation,
+                right: right
+            };
+        }
+        return left;
+    }
+    parseBitwiseShiftExpression() {
+        let left = this.parseAdditiveExpression();
+        if (this.nextIs("bitwise shift")) {
+            let operation = this.parseLiteral();
+            let right = this.parseAdditiveExpression();
+            return {
+                type: "binary expression",
+                left: left,
+                operation: operation,
+                right: right
+            };
+        }
+        return left;
+    }
+    parseAdditiveExpression() {
+        let left = this.parseMultiplicativeExpression();
+        if (this.nextIs("additive")) {
+            let operation = this.parseLiteral();
+            let right = this.parseMultiplicativeExpression();
+            return {
+                type: "binary expression",
+                left: left,
+                operation: operation,
+                right: right
+            };
+        }
+        return left;
+    }
+    parseMultiplicativeExpression() {
+        let left = this.parseUnaryExpression();
+        if (this.nextIs("multiplicative")) {
+            let operation = this.parseLiteral();
+            let right = this.parseUnaryExpression();
+            return {
+                type: "binary expression",
+                left: left,
+                operation: operation,
+                right: right
+            };
+        }
+        return left;
+    }
+    parseExpression() {
+        return this.parseBinaryExpression();
+    }
+    parseUnaryExpression() {
+        if (this.nextIs("identifier") && this.nextNextIs("left parentheses")) {
+            let literal = this.parseLiteral();
+            this.next("left parentheses");
+            let node = { type: "function call" };
+            node.name = literal.value;
+            node.arguments = this.parseExpressionList();
+            this.next("right parenthses");
+            return node;
+        }
+        if (this.nextIs("integer") || this.nextIs("character") || this.nextIs("string") || this.nextIs("identifier")) {
+            return this.parseLiteral();
         }
         if (this.nextIs("left parentheses")) {
             this.next("left parentheses");

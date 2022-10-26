@@ -6,7 +6,12 @@ class TokenType {
     
     static readonly KEYWORD = new TokenType("keyword", /^(else|fun|if|loop|return|until|var)\b/);
     static readonly MINUS = new TokenType("minus", /^-/);
-    static readonly EQUALS = new TokenType("equals", /^=/);
+    static readonly ADDITIVE = new TokenType("additive", /^[\+\-]/);
+    static readonly COMPARISON = new TokenType("comparison", /^(==|!=|<=?|>=?)/);
+    static readonly MULTIPLICATIVE = new TokenType("multiplicative", /^\*\/\%/);
+    static readonly BITWiSE_COMPARISON = new TokenType("bitwise comparison", /^[\&\|]/)
+    static readonly XOR = new TokenType("xor", /^\^/);
+    static readonly BITWISE_SHIFT = new TokenType("bitwise shift", /^(<<|>>)/);
     static readonly NEWLINE = new TokenType("newline", /^\n+/);
     static readonly WHITESPACE = new TokenType("whitespace", /^[ \t]+/);
     static readonly STRING = new TokenType("string", /^"([^"]|\\")*"/);

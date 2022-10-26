@@ -7,7 +7,12 @@ class TokenType {
     group;
     static KEYWORD = new TokenType("keyword", /^(else|fun|if|loop|return|until|var)\b/);
     static MINUS = new TokenType("minus", /^-/);
-    static EQUALS = new TokenType("equals", /^=/);
+    static ADDITIVE = new TokenType("additive", /^[\+\-]/);
+    static COMPARISON = new TokenType("comparison", /^(==|!=|<=?|>=?)/);
+    static MULTIPLICATIVE = new TokenType("multiplicative", /^\*\/\%/);
+    static BITWiSE_COMPARISON = new TokenType("bitwise comparison", /^[\&\|]/);
+    static XOR = new TokenType("xor", /^\^/);
+    static BITWISE_SHIFT = new TokenType("bitwise shift", /^(<<|>>)/);
     static NEWLINE = new TokenType("newline", /^\n+/);
     static WHITESPACE = new TokenType("whitespace", /^[ \t]+/);
     static STRING = new TokenType("string", /^"([^"]|\\")*"/);

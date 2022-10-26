@@ -14,7 +14,7 @@ export class TokenError extends Error {
 
 export default class Parser {
 
-    public constructor(public readonly tokens: Token[]) {}
+    public constructor(public readonly tokens: Token[]) { }
 
     private next(expectedType?: string, expectedValue?: string): Token {
         if (expectedType && this.tokens[0].type.name !== expectedType) throw new TokenError(this.tokens[0], `Expected type ${expectedType} but found ${this.tokens[0].type.name}`);
@@ -25,6 +25,11 @@ export default class Parser {
     private nextIs(expectedType: string, expectedValue?: string): boolean {
         if (!expectedValue) return this.tokens[0].type.name === expectedType;
         return this.tokens[0].type.name === expectedType && this.tokens[0].value === expectedValue;
+    }
+
+    private nextNextIs(expectedType: string, expectedValue?: string): boolean {
+        if (!expectedValue) return this.tokens[1].type.name === expectedType;
+        return this.tokens[1].type.name === expectedType && this.tokens[1].value === expectedValue;
     }
 
     parse(): ASTNode {
@@ -77,7 +82,7 @@ export default class Parser {
     }
 
     private parseVarList(): ASTNode {
-        let node = { type: "var list"};
+        let node = { type: "var list" };
         this.next("keyword", "var");
         node["identifier list"] = this.parseIdentifierList();
         this.next("newline");
@@ -98,7 +103,7 @@ export default class Parser {
 
     private parseStatement(): ASTNode {
         if (this.nextIs("keyword", "if")) return this.parseIfStatement();
-        
+
         if (this.nextIs("keyword", "until")) {
             let node: ASTNode = { type: "until statement" };
             this.next("keyword", "until");
@@ -118,9 +123,9 @@ export default class Parser {
         }
 
         if (this.nextIs("return")) {
-            let node: ASTNode = { type: "return statement"};
+            let node: ASTNode = { type: "return statement" };
             if (this.nextIs("newline")) {
-                this.next("newline"); 
+                this.next("newline");
                 return node;
             }
             node.value = this.parseExpression();
@@ -147,25 +152,147 @@ export default class Parser {
         throw new TokenError(this.tokens[0], `Unexpected token: ${this.next().value}`);
     }
 
+    private parseBinaryExpression(): ASTNode {
+        let left = this.parseBitwiseComparisonExpression();
+        if (this.nextIs("xor")) {
+            let operation = this.parseLiteral();
+            let right = this.parseBitwiseComparisonExpression();
+            return {
+                type: "binary expression",
+                left: left,
+                operation: operation,
+                right: right
+            };
+        }
+        return left;
+    }
+
+    private parseBitwiseComparisonExpression(): ASTNode {
+        let left = this.parseComparisonExpression();
+        if (this.nextIs("bitwise comparison")) {
+            let operation = this.parseLiteral();
+            let right = this.parseComparisonExpression();
+            return {
+                type: "binary expression",
+                left: left,
+                operation: operation,
+                right: right
+            };
+        }
+        return left;
+    }
+
+    private parseComparisonExpression(): ASTNode {
+        let left = this.parseBitwiseShiftExpression();
+        if (this.nextIs("comparison")) {
+            let operation = this.parseLiteral();
+            let right = this.parseBitwiseShiftExpression();
+            return {
+                type: "binary expression",
+                left: left,
+                operation: operation,
+                right: right
+            };
+        }
+        return left;
+    }
+
+    private parseBitwiseShiftExpression(): ASTNode {
+        let left = this.parseAdditiveExpression();
+        if (this.nextIs("bitwise shift")) {
+            let operation = this.parseLiteral();
+            let right = this.parseAdditiveExpression();
+            return {
+                type: "binary expression",
+                left: left,
+                operation: operation,
+                right: right
+            };
+        }
+        return left;
+    }
+
+    private parseAdditiveExpression(): ASTNode {
+        let left = this.parseMultiplicativeExpression();
+        if (this.nextIs("additive")) {
+            let operation = this.parseLiteral();
+            let right = this.parseMultiplicativeExpression();
+            return {
+                type: "binary expression",
+                left: left,
+                operation: operation,
+                right: right
+            };
+        }
+        return left;
+    }
+
+    /**
+     * Parses a multiplicative expression.
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <mexpr> ::= 
+     *      <uexpr> * <uexpr> |
+     *      <uexpr> / <uexpr> |
+     *      <uexpr> % <uexpr>
+     * ```
+     * 
+     * @returns The parsed node.
+     * @see `<uexpr>`: {@link parseUnaryExpression UnaryExpression}
+     */
+    private parseMultiplicativeExpression(): ASTNode {
+        let left = this.parseUnaryExpression();
+        if (this.nextIs("multiplicative")) {
+            let operation = this.parseLiteral();
+            let right = this.parseUnaryExpression();
+            return {
+                type: "binary expression",
+                left: left,
+                operation: operation,
+                right: right
+            };
+        }
+        return left;
+    }
+
+    /** 
+     * Parses an expression.
+     * @return The parsed node.
+     */
     private parseExpression(): ASTNode {
-        if (this.nextIs("integer") || this.nextIs("character") || this.nextIs("string")) {
-            return this.parseLiteral(); // TODO: binary expressions
+        return this.parseBinaryExpression();
+    }
+
+    /**
+     * Parses a unary expression. Contrary to its name, this parses more than just unary expressions, specifically:
+     * - Unary operations: `-<expr>, ~<expr>, .<expr>`
+     * - Literals: `<integer>, <string>, <character>, <identifier>`
+     * - Function calls: `<identifier>(<arguments>)`
+     * - Parenthesized expressions: `(<expr>)`
+     * 
+     * @returns The parsed node
+     */
+    private parseUnaryExpression(): ASTNode {
+
+        // Function call
+        if (this.nextIs("identifier") && this.nextNextIs("left parentheses")) {
+            let literal = this.parseLiteral();
+            this.next("left parentheses");
+            let node: ASTNode = { type: "function call" };
+            node.name = literal.value;
+            node.arguments = this.parseExpressionList();
+            this.next("right parenthses");
+            return node;
         }
 
-        if (this.nextIs("identifier")) {
-            let identifier = this.next("identifier");
-            if (this.nextIs("left parentheses")) {
-                this.next("left parentheses");
-                let node: ASTNode = { type: "function call" };
-                node.name = identifier;
-                node.arguments = this.parseExpressionList();
-                this.next("right parenthses");
-                return node;
-            }
-
-            return { type: "identifier", value: identifier.value};
+        // Literal Expression
+        if (this.nextIs("integer") || this.nextIs("character") || this.nextIs("string") || this.nextIs("identifier")) {
+            return this.parseLiteral();
         }
-        
+
+        // Parenthesized expression
         if (this.nextIs("left parentheses")) {
             this.next("left parentheses");
             let node: ASTNode = { type: "expression" };
@@ -176,6 +303,7 @@ export default class Parser {
             return node;
         }
 
+        // Dereferencing
         if (this.nextIs("dot")) {
             let node: ASTNode = { type: "unary operation expression" };
             node.operation = this.next("dot");
@@ -183,12 +311,14 @@ export default class Parser {
             return node;
         }
 
+        // Unary negation
         if (this.nextIs("minus")) {
             let node: ASTNode = { type: "negation" };
             this.next("minus");
             node.expression = this.parseExpression();
         }
 
+        // Bitwise negation
         if (this.nextIs("bitwise not")) {
             let node: ASTNode = { type: "bitwise negation" };
             this.next("bitwise not");
@@ -212,7 +342,7 @@ export default class Parser {
     }
 
     private parseIfStatement(): ASTNode {
-        let node: ASTNode = { type: "if statement"};
+        let node: ASTNode = { type: "if statement" };
         this.next("keyword", "if");
         node.condition = this.parseExpression();
         this.next("left brace");
