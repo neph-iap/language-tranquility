@@ -1,6 +1,74 @@
+let tokenTypes: TokenType[] = [];
+
 class TokenType {
     
-    static ADD = new TokenType("add", /^+/);
+    static readonly KEYWORD = new TokenType("keyword", /^(else|fun|if|loop|return|until|var)\b/);
+    static readonly MINUS = new TokenType("minus", /^-/);
+    static readonly EQUALS = new TokenType("equals", /^=/);
+    static readonly NEWLINE = new TokenType("newline", /^[\r\n]+/);
+    static readonly WHITESPACE = new TokenType("whitespace", /^[ \t]+/);
+    static readonly STRING = new TokenType("string", /^"([^"]\\")*"/);
+    static readonly INTEGER = new TokenType("integer", /^\d+/);
+    static readonly LEFT_BRACE = new TokenType("left brace", /^\{/);
+    static readonly RIGHT_BRACE = new TokenType("left brace", /^\}/);
+    static readonly LEFT_PARENTHESES = new TokenType("left parentheses", /^\(/);
+    static readonly RIGHT_PARENTHESES = new TokenType("right parentheses", /^\)/);
+    static readonly COLON = new TokenType("colon", /^:/);
+    static readonly COMMA = new TokenType("comma", /^,/);
+    static readonly COMMENT = new TokenType("comment", /^#[^\n\r]*/);
+    static readonly CHARACTER = new TokenType("character", /^'([^']|\\')'/)
+    static readonly DOT = new TokenType("dot", /^\./);
 
-    constructor(public readonly name: string, public readonly regex: RegExp) {}
+    static readonly IDENTIFIER = new TokenType("identifier", /^[a-zA-Z_]\w*/);
+
+    static readonly UNRECOGNIZED = new TokenType("unrecognized", /^[^\n\r\s\t]+/);
+
+    constructor(public readonly name: string, public readonly regex: RegExp, public readonly group = 0) {
+        tokenTypes.push(this);
+    }
+
+    toString() {
+        return this.name;
+    }
+}
+
+export interface Token { type: TokenType, value: string, line: number, column: number };
+
+export default function tokenize(code: string): Token[] {
+    let tokens: Token[] = [];
+    let remainingCode = code;
+    let currentIndex = 0;
+    let lineNumber = 0;
+    while (remainingCode) {
+        let matchFound = false;
+        for (let i = 0; i < tokenTypes.length; i++) {
+            let tokenType = tokenTypes[i];
+            let match = tokenType.regex.exec(remainingCode);
+            if (match) {
+                let matchedBit = match[tokenType.group];
+                if (tokenType.name !== "whitespace" && tokenType.name !== "comment") tokens.push({ type: tokenType, value: matchedBit, line: lineNumber, column: currentIndex });
+                remainingCode = remainingCode.substring(matchedBit.length);
+                currentIndex += matchedBit.length;
+                if (tokenType.name === "newline") {
+                    currentIndex = 0;
+                    lineNumber++;
+                }
+                matchFound = true;
+                break;
+            }
+        }
+        if (!matchFound) throw `Error: No match found for ${remainingCode}`;
+    }
+    return tokens;
+}
+
+export function getVariableNames(tokens: Token[]) {
+    let variableNames: { [key: string]: "var" | "fun" } = {};
+    for (let i = 0; i < tokens.length; i++) {
+        if (tokens[i].type.name === "keyword") {
+            if (tokens[i].value === "var") variableNames[tokens[i + 1].value] = "var";
+            else if (tokens[i].value === "fun") variableNames[tokens[i + 1].value] = "fun";
+        }
+    }
+    return variableNames;
 }

@@ -1,3 +1,3 @@
-fun init() {
-    maketable("Hello world!\n")
+fun init() 
+{
 }

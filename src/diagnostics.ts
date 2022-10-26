@@ -1,42 +1,36 @@
 import * as vscode from "vscode";
-import * as cmd from "child_process";
+import tokenize, { getVariableNames, Token } from "./lexer";
+import Parser, { TokenError } from "./parser";
 
 export function refreshDiagnostics(doc: vscode.TextDocument, tranqDiagnostics: vscode.DiagnosticCollection): void {
     if (!/.t(ranq)?$/i.test(doc.uri.path)) return;
-    createDiagnostic(doc, tranqDiagnostics);
+    
+    let diagnostics: vscode.Diagnostic[] = [];
+    
+    try {
+        let tokens = tokenize(doc.getText());
+        tokens.forEach(token => console.log(token.type.name, token.value));
+
+        let variables = getVariableNames(tokens);
+        let keys = Object.keys(variables);
+        tokens.filter(token => token.type.name === "identifier").forEach(token => {
+            if (!keys.includes(token.value)) createTokenDiagnostic(diagnostics, token, `Error: ${token.value} is not defined.`, vscode.DiagnosticSeverity.Error);
+        });
+
+        new Parser(tokens).parse();
+    } catch(error) {
+        if (error instanceof TokenError) createTokenDiagnostic(diagnostics, error.token, error.message, error.severity);
+        else console.log(error);
+    }
+
+    console.log(JSON.stringify(diagnostics));
+    tranqDiagnostics.set(doc.uri, diagnostics);
 }
 
-function createDiagnostic(doc: vscode.TextDocument, tranqDiagnostics: vscode.DiagnosticCollection) {
-    let diagnostics: vscode.Diagnostic[] = [];
-
-    // function onData(data: string): void {
-    //     let regex = /\:(\d+)\:/
-    //     let match = data.match(regex);
-    //     if (match) {
-    //         // Unresolved symbol
-    //         let unresolved = /unresolved\ssymbol\s(.+)$/;
-    //         let unresolvedMatch = data.match(unresolved);
-    //         if (unresolvedMatch) {
-    //             let lineNumber = Number(match[1]);
-    //             let line = doc.lineAt(lineNumber);
-    //             let index = line.text.indexOf(unresolvedMatch[1])
-    //             let range = new vscode.Range(lineNumber, index, lineNumber, index + unresolvedMatch[1].length);
-    //             let diagnostic = new vscode.Diagnostic(range, "Test error", vscode.DiagnosticSeverity.Error);
-    //             diagnostic.code = data;
-    //             diagnostics.push(diagnostic);
-    //         }
-    //     }
-    // }
-
-    // let process = cmd.execFile("~/home/bls96/tranquility/tranqc", [doc.uri.path]);
-
-    // process.stdout!.setEncoding('utf8');
-    // process.stdout!.on('data', onData);
-
-    // process.stderr!.setEncoding('utf8');
-    // process.stderr!.on('data', onData);
-
-    // process.on("close", () => { tranqDiagnostics.set(doc.uri, diagnostics); });
+export function createTokenDiagnostic(diagnostics: vscode.Diagnostic[], token: Token, message: string, severity: vscode.DiagnosticSeverity = vscode.DiagnosticSeverity.Error): void {
+    let range = new vscode.Range(token.line, token.column, token.line, token.column + token.value.length);
+    let diagnostic = new vscode.Diagnostic(range, message, severity);
+    diagnostics.push(diagnostic);
 }
 
 export function subscribeToDocumentChanges(context: vscode.ExtensionContext, tranqDiagnostics: vscode.DiagnosticCollection): void {
