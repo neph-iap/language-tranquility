@@ -9,7 +9,7 @@ class TokenType {
     static MINUS = new TokenType("minus", /^-/);
     static ADDITIVE = new TokenType("additive", /^[\+\-]/);
     static COMPARISON = new TokenType("comparison", /^(==|!=|<=?|>=?)/);
-    static MULTIPLICATIVE = new TokenType("multiplicative", /^\*\/\%/);
+    static MULTIPLICATIVE = new TokenType("multiplicative", /^[\*\/\%]/);
     static BITWiSE_COMPARISON = new TokenType("bitwise comparison", /^[\&\|]/);
     static XOR = new TokenType("xor", /^\^/);
     static BITWISE_SHIFT = new TokenType("bitwise shift", /^(<<|>>)/);

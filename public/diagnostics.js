@@ -2,7 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.subscribeToDocumentChanges = exports.createTokenDiagnostic = exports.refreshDiagnostics = void 0;
 const vscode = require("vscode");
-const documentation_1 = require("./documentation");
 const lexer_1 = require("./lexer");
 const parser_1 = require("./parser");
 function refreshDiagnostics(doc, tranqDiagnostics) {
@@ -11,21 +10,6 @@ function refreshDiagnostics(doc, tranqDiagnostics) {
     let diagnostics = [];
     try {
         let tokens = (0, lexer_1.default)(doc.getText());
-        let variables = getVariableNames(tokens, diagnostics);
-        let keys = Object.keys(variables);
-        tokens.filter(token => token.type.name === "identifier").forEach(token => {
-            if (!keys.includes(token.value))
-                createTokenDiagnostic(diagnostics, token, `${token.value} is not defined.`, vscode.DiagnosticSeverity.Error);
-        });
-        let counts = new Map();
-        tokens.filter(token => token.type.name === "identifier").forEach(token => {
-            counts.set(token.value, { token: token, count: counts.has(token.value) ? counts.get(token.value).count + 1 : 1 });
-        });
-        let builtins = Object.keys(documentation_1.functionDescriptions);
-        for (let [variableName, countObject] of counts) {
-            if (countObject.count === 1 && !builtins.includes(variableName))
-                createTokenDiagnostic(diagnostics, countObject.token, `Variable "${variableName}" is unused.`, vscode.DiagnosticSeverity.Warning);
-        }
         for (let i = 0; i < tokens.length; i++) {
             let token = tokens[i];
             if (token.type.name === "unrecognized") {
@@ -84,34 +68,3 @@ function subscribeToDocumentChanges(context, tranqDiagnostics) {
     }));
 }
 exports.subscribeToDocumentChanges = subscribeToDocumentChanges;
-function getVariableNames(tokens, diagnostics) {
-    let variableNames = {};
-    Object.keys(documentation_1.functionDescriptions).forEach(func => variableNames[func] = { type: "fun", isAssigned: true });
-    for (let i = 0; i < tokens.length; i++) {
-        let token = tokens[i];
-        let nextToken = tokens[i + 1];
-        let lastToken = tokens[i - 1];
-        if (token.type.name === "keyword") {
-            if (token.value === "var") {
-                if (Object.keys(variableNames).includes(nextToken.value))
-                    createTokenDiagnostic(diagnostics, nextToken, `Variable "${nextToken.value}" already exists. To reassign it, use \`${nextToken.value} : <value>\``, vscode.DiagnosticSeverity.Error);
-                variableNames[nextToken.value] = { type: "var", isAssigned: false };
-            }
-            else if (token.value === "fun") {
-                if (Object.keys(documentation_1.functionDescriptions).includes(nextToken.value) && nextToken.value !== "init")
-                    createTokenDiagnostic(diagnostics, nextToken, `Error: function ${nextToken.value} already exists as a built-in function. Choose a different function name.`, vscode.DiagnosticSeverity.Error);
-                else if (Object.keys(variableNames).includes(nextToken.value) && nextToken.value !== "init")
-                    createTokenDiagnostic(diagnostics, nextToken, `Function ${nextToken.value} already exists. Either rename the duplicate or choose a different name for this function.`, vscode.DiagnosticSeverity.Error);
-                variableNames[nextToken.value] = { type: "fun", isAssigned: true };
-            }
-        }
-        else if (token.type.name === "identifier" && nextToken?.type.name === "colon") {
-            variableNames[token.value].isAssigned = true;
-        }
-        else if (token.type.name === "identifier" && !(lastToken?.type.name === "keyword" && lastToken?.value === "var")) {
-            if (!variableNames[token.value].isAssigned)
-                createTokenDiagnostic(diagnostics, token, `No value has been assigned to the memory location "${token.value}". To assign it, use \n\`${token.value} : <expr>\``, vscode.DiagnosticSeverity.Error);
-        }
-    }
-    return variableNames;
-}

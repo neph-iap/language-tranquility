@@ -1,37 +1,101 @@
 import * as vscode from "vscode";
 import { Token } from "./lexer";
 
+/**
+ * A node in an abstract syntax tree (or the tree itself).
+ */
 interface ASTNode {
     type: string;
     [key: string | number]: any;
 }
 
+/**
+ * An `Error` that is tied to a token and has a severity. Used to create diagnostics at the tokens position.
+ */
 export class TokenError extends Error {
+
+    /**
+     * Creates a new TokenError
+     * 
+     * @param token The token to highlight
+     * @param message The error message
+     * @param severity The error severity
+     */
     constructor(public readonly token: Token, message: string, public readonly severity: vscode.DiagnosticSeverity = vscode.DiagnosticSeverity.Error) {
         super(message);
     }
 }
 
+/**
+ * A `Parser` takes a list of tokens and converts it into an abstract syntax tree (AST) node.
+ */
 export default class Parser {
 
-    public constructor(public readonly tokens: Token[]) { }
+    /** 
+     * Creates a new parser.
+     * 
+     * @param tokens The tokens to parse. 
+     */
+    constructor(public readonly tokens: Token[]) { }
 
+    /**
+     * Removes and returns the next token.
+     * 
+     * @param expectedType The expected type of the next token. If it does not match, a {@link TokenError} is thrown.
+     * @param expectedValue The expected value of the next token. If it does not match, a {@link TokenError} is thrown.
+     * 
+     * @return The removed token.
+     */
     private next(expectedType?: string, expectedValue?: string): Token {
         if (expectedType && this.tokens[0].type.name !== expectedType) throw new TokenError(this.tokens[0], `Expected type ${expectedType} but found ${this.tokens[0].type.name}`);
         if (expectedValue && this.tokens[0].value !== expectedValue) throw new TokenError(this.tokens[0], `Expected ${expectedValue} but found ${this.tokens[0].value}`);
         return this.tokens.shift()!;
     }
 
+    /**
+     * Checks if the next token matches the given type and value if given without removing it.
+     * 
+     * @param expectedType The type of token to expect
+     * @param expectedValue The value to expect
+     * 
+     * @return whether or not the next token matches the given type and value if given.
+     */
     private nextIs(expectedType: string, expectedValue?: string): boolean {
         if (!expectedValue) return this.tokens[0].type.name === expectedType;
         return this.tokens[0].type.name === expectedType && this.tokens[0].value === expectedValue;
     }
 
+    /**
+     * Checks if the token after the next token matches the given type and value if given without removing it.
+     * 
+     * @param expectedType The type of token to expect
+     * @param expectedValue The value to expect
+     * 
+     * @return whether or not the token after the next one matches the given type and value if given.
+     */
     private nextNextIs(expectedType: string, expectedValue?: string): boolean {
         if (!expectedValue) return this.tokens[1].type.name === expectedType;
         return this.tokens[1].type.name === expectedType && this.tokens[1].value === expectedValue;
     }
 
+    /**
+     * Parses a program.
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <program> ::= 
+     *      e |
+     *      <var-list> | 
+     *      <fun-list> |
+     *      <var-list> <fun-list>
+     * ```
+     * 
+     * @return The parsed node.
+     * 
+     * @see `<var-list>`: {@link parseVarList VariableList}
+     * @see `<fun-list>`: {@link parseFunctionList FunctionList}
+     */
     parse(): ASTNode {
         let node: ASTNode = { type: "program" };
         if (this.nextIs("keyword", "var")) node.varList = this.parseVarList();
@@ -39,12 +103,40 @@ export default class Parser {
         return node;
     }
 
+    /**
+     * Parses a function list.
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <fun-list> ::= 
+     *      <fun-decl> | 
+     *      <fun-decl> <fun-list>
+     * ```
+     * 
+     * @return The parsed node.
+     * 
+     * @see `<fun-decl>`: {@link parseFunctionDeclaration FunctionDeclaration}
+     */
     private parseFunctionList(): ASTNode {
         let node = this.parseFunctionDeclaration();
         if (this.nextIs("keyword", "fun")) node.nextFunction = this.parseFunctionDeclaration();
         return node;
     }
 
+    /**
+     * Parses a function declaration.
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <fun-decl> ::= 
+     *      "fun" IDENTIFIER "(" <id-list>? ")" "{" "\n" <var-list> <stmt-list> "}" "\n"
+     * ```
+     * 
+     * @return The parsed node.
+     * @see `<id-list>`: {@link parseIdentifierList IdentifierList}
+     */
     private parseFunctionDeclaration(): ASTNode {
         this.next("keyword", "fun");
         let name = this.next("identifier");
@@ -71,6 +163,19 @@ export default class Parser {
         return node;
     }
 
+    /**
+     * Parses an identifier list.
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <id-list> ::= 
+     *      IDENTIFIER |
+     *      IDENTIFIER "," <id-list>
+     * ```
+     * 
+     * @return The parsed node.
+     */
     private parseIdentifierList(): ASTNode {
         let identifiers: ASTNode = { type: "identifier list" };
         identifiers.value = this.next("identifier");
@@ -81,6 +186,21 @@ export default class Parser {
         return identifiers;
     }
 
+    /**
+     * Parses a variable list.
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <var-list> ::= 
+     *      "var" <id-list> "\n" |
+     *      "var" <id-list> "\n" <var-list>
+     * ```
+     * 
+     * @return The parsed node.
+     * 
+     * @see `<id-list>`: {@link parseIdentifierList IdentifierList}
+     */
     private parseVarList(): ASTNode {
         let node = { type: "var list" };
         this.next("keyword", "var");
@@ -90,6 +210,20 @@ export default class Parser {
         return node;
     }
 
+    /**
+     * Parses a statement list.
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <stmt-list> ::= 
+     *      :\n" <stmt-list> |
+     *      <stmt> <stmt-list>
+     * ```
+     * 
+     * @return The parsed node.
+     * @see `<stmt>`: {@link parseStatement Statement}
+     */
     private parseStatementList(): ASTNode {
         let node: ASTNode = { type: "statement list" };
         if (this.nextIs("newline")) {
@@ -101,9 +235,34 @@ export default class Parser {
         return node;
     }
 
+    /**
+     * Parses a statemenet;
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <stmt> ::= 
+     *      <expr> ":" <expr> "\n" |
+     *      <expr> "\n" |
+     *      <if-stmt> |
+     *      "until" <expr> "\n" |
+     *      "loop" "{" "\n" <stmt-list> "}" "\n" |
+     *      "return" "\n" |
+     *      "return" <expr> "\n"
+     * ```
+     * 
+     * @return The parsed node.
+     * 
+     * @see `<expr>`: {@link parseExpression Expression}
+     * @see `<if-stmt>`: {@link parseIfStatement IfStatement}
+     * @see `<stmt-list>`: {@link parseStatementList StatementList}
+     */
     private parseStatement(): ASTNode {
+
+        // If statement
         if (this.nextIs("keyword", "if")) return this.parseIfStatement();
 
+        // Until statement
         if (this.nextIs("keyword", "until")) {
             let node: ASTNode = { type: "until statement" };
             this.next("keyword", "until");
@@ -111,6 +270,7 @@ export default class Parser {
             this.next("newline");
         }
 
+        // Loop statement
         if (this.nextIs("keyword", "loop")) {
             let node: ASTNode = { type: "loop" };
             this.next("keyword", "loop");
@@ -122,6 +282,7 @@ export default class Parser {
             return node;
         }
 
+        // Return statement
         if (this.nextIs("return")) {
             let node: ASTNode = { type: "return statement" };
             if (this.nextIs("newline")) {
@@ -134,6 +295,8 @@ export default class Parser {
         }
 
         let expression = this.parseExpression();
+
+        // Assignment statement
         if (this.nextIs("colon")) {
             let node: ASTNode = { type: "assignment" };
             node.expression1 = expression;
@@ -142,6 +305,7 @@ export default class Parser {
             return node;
         }
 
+        // Single expression 
         if (this.nextIs("newline")) {
             let node: ASTNode = { type: "expression statement" };
             node.expression = expression;
@@ -152,6 +316,20 @@ export default class Parser {
         throw new TokenError(this.tokens[0], `Unexpected token: ${this.next().value}`);
     }
 
+    /**
+     * Parses a binary expression.
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <bexpr> ::= 
+     *      <bcexpr> ^ <bcexpr> |
+     *      <bcexpr>
+     * ```
+     * 
+     * @return The parsed node.
+     * @see `<bcexpr>`: {@link parseBitwiseComparisonExpression BitwiseComparisonExpression}
+     */
     private parseBinaryExpression(): ASTNode {
         let left = this.parseBitwiseComparisonExpression();
         if (this.nextIs("xor")) {
@@ -167,6 +345,21 @@ export default class Parser {
         return left;
     }
 
+    /**
+     * Parses a bitwise comparison expression.
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <bcexpr> ::= 
+     *      <cexpr> & <cexpr> |
+     *      <cexpr> | <cexpr> |
+     *      <cexpr>
+     * ```
+     * 
+     * @return The parsed node.
+     * @see `<cexpr>`: {@link parseComparisonExpression ComparisonExpression}
+     */
     private parseBitwiseComparisonExpression(): ASTNode {
         let left = this.parseComparisonExpression();
         if (this.nextIs("bitwise comparison")) {
@@ -182,6 +375,25 @@ export default class Parser {
         return left;
     }
 
+    /**
+     * Parses a comparison expression.
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <cexpr> ::= 
+     *      <bsexpr> == <bsexpr> |
+     *      <bsexpr> != <bsexpr> |
+     *      <bsexpr> < <bsexpr> |
+     *      <bsexpr> > <bsexpr> |
+     *      <bsexpr> <= <bsexpr> |
+     *      <bsexpr> >= <bsexpr> |
+     *      <bsexpr>
+     * ```
+     * 
+     * @return The parsed node.
+     * @see `<bsexpr>`: {@link parseBitwiseShiftExpression BitwiseShiftExpression}
+     */
     private parseComparisonExpression(): ASTNode {
         let left = this.parseBitwiseShiftExpression();
         if (this.nextIs("comparison")) {
@@ -197,6 +409,21 @@ export default class Parser {
         return left;
     }
 
+    /**
+     * Parses a bitwise-shift expression.
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <bsexpr> ::= 
+     *      <aexpr> << <aexpr> |
+     *      <aexpr> >> <aexpr> |
+     *      <aexpr>
+     * ```
+     * 
+     * @return The parsed node.
+     * @see `<aexpr>`: {@link parseAdditiveExpression AdditiveExpression}
+     */
     private parseBitwiseShiftExpression(): ASTNode {
         let left = this.parseAdditiveExpression();
         if (this.nextIs("bitwise shift")) {
@@ -212,6 +439,21 @@ export default class Parser {
         return left;
     }
 
+    /**
+     * Parses an additive expression.
+     * 
+     * Syntax:
+     * 
+     * ```tranquility
+     * <aexpr> ::= 
+     *      <mexpr> + <mexpr> |
+     *      <mexpr> - <mexpr> |
+     *      <mexpr>
+     * ```
+     * 
+     * @return The parsed node.
+     * @see `<mexpr>`: {@link parseMultiplicativeExpression MultiplicativeExpression}
+     */
     private parseAdditiveExpression(): ASTNode {
         let left = this.parseMultiplicativeExpression();
         if (this.nextIs("additive")) {
@@ -236,10 +478,11 @@ export default class Parser {
      * <mexpr> ::= 
      *      <uexpr> * <uexpr> |
      *      <uexpr> / <uexpr> |
-     *      <uexpr> % <uexpr>
+     *      <uexpr> % <uexpr> |
+     *      <uexpr>
      * ```
      * 
-     * @returns The parsed node.
+     * @return The parsed node.
      * @see `<uexpr>`: {@link parseUnaryExpression UnaryExpression}
      */
     private parseMultiplicativeExpression(): ASTNode {
@@ -272,7 +515,7 @@ export default class Parser {
      * - Function calls: `<identifier>(<arguments>)`
      * - Parenthesized expressions: `(<expr>)`
      * 
-     * @returns The parsed node
+     * @return The parsed node
      */
     private parseUnaryExpression(): ASTNode {
 
