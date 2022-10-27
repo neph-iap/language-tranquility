@@ -49,7 +49,7 @@ function tokenize(code) {
                 currentIndex += matchedBit.length;
                 if (tokenTypeName === "newline") {
                     currentIndex = 0;
-                    lineNumber++;
+                    lineNumber += matchedBit.length;
                 }
                 matchFound = true;
                 break;

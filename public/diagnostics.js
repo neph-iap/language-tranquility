@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.subscribeToDocumentChanges = exports.createTokenDiagnostic = exports.refreshDiagnostics = void 0;
+exports.tokenNonError = exports.subscribeToDocumentChanges = exports.createTokenDiagnostic = exports.refreshDiagnostics = void 0;
 const vscode = require("vscode");
 const lexer_1 = require("./lexer");
 const parser_1 = require("./parser");
@@ -17,11 +17,13 @@ function refreshDiagnostics(doc, tranqDiagnostics) {
                     createTokenDiagnostic(diagnostics, token, `Semicolons are not allowed in Tranquility. Simply end statements with a new line.`, vscode.DiagnosticSeverity.Error);
                 else if (/^\r+$/.test(token.value))
                     createTokenDiagnostic(diagnostics, token, `Carriage returns are not allowed in Tranquility. Read the README to learn how to remove them.`, vscode.DiagnosticSeverity.Error);
+                else if (/^=$/.test(token.value))
+                    createTokenDiagnostic(diagnostics, token, "Equal signs are not used in Tranquility. To store a value into a memory address, use <address> \":\" <value>", vscode.DiagnosticSeverity.Error);
                 else
                     createTokenDiagnostic(diagnostics, token, `Unrecognized token "${token.value}"`, vscode.DiagnosticSeverity.Error);
             }
         }
-        let AST = new parser_1.default(tokens).parse();
+        let AST = new parser_1.default(tokens, diagnostics).parse();
         console.log(AST);
     }
     catch (error) {
@@ -34,6 +36,8 @@ function refreshDiagnostics(doc, tranqDiagnostics) {
 }
 exports.refreshDiagnostics = refreshDiagnostics;
 function createTokenDiagnostic(diagnostics, token, message, severity = vscode.DiagnosticSeverity.Error) {
+    if (token.hasDiagnostic)
+        return;
     let start;
     switch (severity) {
         case vscode.DiagnosticSeverity.Error:
@@ -50,7 +54,8 @@ function createTokenDiagnostic(diagnostics, token, message, severity = vscode.Di
             break;
     }
     let range = new vscode.Range(token.line, token.column, token.line, token.column + token.value.length);
-    let diagnostic = new vscode.Diagnostic(range, `${start}${message}`, severity);
+    let diagnostic = new vscode.Diagnostic(range, start + message, severity);
+    token.hasDiagnostic = true;
     diagnostics.push(diagnostic);
 }
 exports.createTokenDiagnostic = createTokenDiagnostic;
@@ -69,3 +74,7 @@ function subscribeToDocumentChanges(context, tranqDiagnostics) {
     }));
 }
 exports.subscribeToDocumentChanges = subscribeToDocumentChanges;
+function tokenNonError(diagnostics, token, message, severity) {
+    createTokenDiagnostic(diagnostics, token, message, severity);
+}
+exports.tokenNonError = tokenNonError;

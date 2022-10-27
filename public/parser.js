@@ -2,12 +2,33 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TokenError = void 0;
 const vscode = require("vscode");
+const builtins_1 = require("./builtins");
+const diagnostics_1 = require("./diagnostics");
+function operandsMatch(a, b) {
+    if (a === b)
+        return true;
+    if (a === "any" || b === "any")
+        return true;
+    if (a === "address" && b === "integer")
+        return true;
+    if (a === "integer" && b === "address")
+        return true;
+    return false;
+}
 class Scope {
+    type;
     parent;
+    hasUntil = false;
     functions = [];
     variables = [];
-    constructor(parent) {
+    constructor(type, parent) {
+        this.type = type;
         this.parent = parent;
+        if (this.type === "global") {
+            if (this.parent)
+                throw "Error: global scope cannot have a parent scope";
+            builtins_1.builtInFunctions.forEach(func => this.functions.push({ name: func.name, argumentCount: func.parameterCount }));
+        }
     }
     get allFunctions() {
         let all = [];
@@ -46,11 +67,13 @@ class TokenError extends Error {
 exports.TokenError = TokenError;
 class Parser {
     tokens;
-    currentScope = new Scope();
-    constructor(tokens) {
+    diagnostics;
+    currentScope = new Scope("global");
+    constructor(tokens, diagnostics) {
         this.tokens = tokens;
+        this.diagnostics = diagnostics;
     }
-    next(expectedType, expectedValue) {
+    next(expectedType, expectedValue, scopeType) {
         if (expectedType && this.tokens[0].type !== expectedType)
             throw new TokenError(this.tokens[0], `Expected type ${expectedType} but found ${this.tokens[0].type}`);
         if (expectedValue && this.tokens[0].value !== expectedValue)
@@ -58,7 +81,7 @@ class Parser {
         if (this.nextIs("right brace"))
             this.currentScope = this.currentScope.parent;
         else if (this.nextIs("left brace"))
-            this.currentScope = new Scope(this.currentScope);
+            this.currentScope = new Scope(scopeType, this.currentScope);
         return this.tokens.shift();
     }
     nextIs(expectedType, expectedValue) {
@@ -91,26 +114,37 @@ class Parser {
     }
     parseFunctionDeclaration() {
         this.next("keyword", "fun");
-        let name = this.next("identifier").value;
+        let nameToken = this.next("identifier");
+        let name = nameToken.value;
+        if (name !== "init" && this.currentScope.hasFunctionWithName(name))
+            throw new TokenError(nameToken, `There already exists a function with the name "${name}" in the current scope. Choose a different name.`);
         this.next("left parentheses");
         let args = null;
         if (!this.nextIs("right parentheses"))
             args = this.parseIdentifierList();
         this.next("right parentheses");
-        this.next("left brace");
+        this.next("left brace", undefined, "function");
         this.next("newline");
+        let node = { type: "function declaration", name: name };
+        let scopeFunction = { name: name, argumentCount: -1 };
+        this.currentScope.parent.functions.push(scopeFunction);
+        let param = args;
+        let parameterCount = 0;
+        while (param) {
+            this.currentScope.variables.push({ name: param.value, token: param.token, type: "any" });
+            parameterCount++;
+            param = param.next;
+        }
+        scopeFunction.argumentCount = parameterCount;
         let body = { type: "function body" };
         if (this.nextIs("keyword", "var"))
             body.varList = this.parseVarList();
         if (!(this.nextIs("right brace") || (this.nextIs("newline") && this.nextNextIs("right brace"))))
             body.statementList = this.parseStatementList();
-        let node = {
-            type: "function declaration",
-            name: name,
-            body: body
-        };
-        if (args)
-            node.arguments = args;
+        node.name = name;
+        node.body = body;
+        this.next("right brace");
+        this.next("newline");
         return node;
     }
     parseIdentifierList() {
@@ -127,7 +161,7 @@ class Parser {
         this.next("keyword", "var");
         node.idList = this.parseIdentifierList();
         this.next("newline");
-        if (this.nextIs("keyword", "var"))
+        if (this.nextNextIs("keyword", "var"))
             node.next = this.parseVarList(node);
         if (!previousNode) {
             let variables = [];
@@ -135,7 +169,7 @@ class Parser {
             while (searchingNode) {
                 let id = searchingNode.idList;
                 while (id) {
-                    variables.push({ name: id.value, token: id.token });
+                    variables.push({ name: id.value, token: id.token, type: "any" });
                     id = id.next;
                 }
                 searchingNode = searchingNode.next;
@@ -143,19 +177,16 @@ class Parser {
             variables.forEach(variable => {
                 if (this.currentScope.hasVariableWithName(variable.name))
                     throw new TokenError(variable.token, `Duplicate identifier "${variable.name}"`);
-                this.currentScope.variables.push({ name: variable.name, token: variable.token });
+                this.currentScope.variables.push(variable);
             });
         }
         return node;
     }
     parseStatementList() {
         let node = { type: "statement list" };
-        if (this.nextIs("newline")) {
-            this.next("newline");
-            node.next = this.parseStatementList();
-            return node;
-        }
         node.statement = this.parseStatement();
+        if (!this.nextIs("right brace"))
+            node.next = this.parseStatementList();
         return node;
     }
     parseStatement() {
@@ -164,15 +195,20 @@ class Parser {
         if (this.nextIs("keyword", "until")) {
             let node = { type: "until statement" };
             this.next("keyword", "until");
+            this.currentScope.hasUntil = true;
             node.expression = this.parseExpression();
             this.next("newline");
+            return node;
         }
         if (this.nextIs("keyword", "loop")) {
             let node = { type: "loop" };
-            this.next("keyword", "loop");
-            this.next("left brace");
+            let loopKeyword = this.next("keyword", "loop");
+            this.next("left brace", undefined, "loop");
             this.next("newline");
-            node.body = this.parseStatementList();
+            if (!this.nextIs("right brace"))
+                node.body = this.parseStatementList();
+            if (!this.currentScope.hasUntil)
+                throw new TokenError(loopKeyword, "Infinite loop: Loop statement is missing \`until\` statement.");
             this.next("right brace");
             this.next("newline");
             return node;
@@ -189,6 +225,7 @@ class Parser {
         }
         let expression = this.parseExpression();
         if (this.nextIs("colon")) {
+            this.next("colon");
             let node = { type: "assignment" };
             node.expression1 = expression;
             node.expression2 = this.parseExpression();
@@ -201,97 +238,125 @@ class Parser {
             this.next("newline");
             return node;
         }
-        throw new TokenError(this.tokens[0], `Unexpected token: ${this.next().value}`);
+        throw new TokenError(this.tokens[0], `Unexpected token "${this.next().value}" - Expected a statement.`);
     }
     parseBinaryExpression() {
-        let left = this.parseBitwiseComparisonExpression();
-        if (this.nextIs("xor")) {
+        let node = this.parseBitwiseComparisonExpression();
+        while (this.nextIs("xor")) {
+            let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseBitwiseComparisonExpression();
-            let node = {
+            if (!operandsMatch(node.returnType, right.returnType))
+                throw new TokenError(operation, `Cannot XOR a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} with a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
+            if (left.returnType === "address" || right.returnType === "address")
+                (0, diagnostics_1.tokenNonError)(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
+            node = {
                 type: "binary expression",
+                returnType: "integer",
                 left: left,
                 operation: operation,
                 right: right
             };
-            return node;
         }
-        return left;
+        return node;
     }
     parseBitwiseComparisonExpression() {
-        let left = this.parseComparisonExpression();
-        if (this.nextIs("bitwise comparison")) {
+        let node = this.parseComparisonExpression();
+        while (this.nextIs("bitwise comparison")) {
+            let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseComparisonExpression();
-            let node = {
+            if (!operandsMatch(node.returnType, right.returnType))
+                throw new TokenError(operation, `Cannot bitwise compare a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} to a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
+            if (left.returnType === "address" || right.returnType === "address")
+                (0, diagnostics_1.tokenNonError)(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
+            node = {
                 type: "binary expression",
+                returnType: "boolean",
                 left: left,
                 operation: operation,
                 right: right
             };
-            return node;
         }
-        return left;
+        return node;
     }
     parseComparisonExpression() {
-        let left = this.parseBitwiseShiftExpression();
-        if (this.nextIs("comparison")) {
+        let node = this.parseBitwiseShiftExpression();
+        while (this.nextIs("comparison")) {
+            let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseBitwiseShiftExpression();
-            let node = {
+            if (!operandsMatch(node.returnType, right.returnType))
+                throw new TokenError(operation, `Cannot compare a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} to a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
+            node = {
                 type: "binary expression",
+                returnType: "boolean",
                 left: left,
                 operation: operation,
                 right: right
             };
-            return node;
         }
-        return left;
+        return node;
     }
     parseBitwiseShiftExpression() {
-        let left = this.parseAdditiveExpression();
-        if (this.nextIs("bitwise shift")) {
+        let node = this.parseAdditiveExpression();
+        while (this.nextIs("bitwise shift")) {
+            let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseAdditiveExpression();
-            let node = {
+            if (!operandsMatch(node.returnType, right.returnType))
+                throw new TokenError(operation, `Cannot shift a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} by a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
+            if (left.returnType === "address" || right.returnType === "address")
+                (0, diagnostics_1.tokenNonError)(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
+            node = {
                 type: "binary expression",
+                returnType: "integer",
                 left: left,
                 operation: operation,
                 right: right
             };
-            return node;
         }
-        return left;
+        return node;
     }
     parseAdditiveExpression() {
-        let left = this.parseMultiplicativeExpression();
-        if (this.nextIs("additive")) {
+        let node = this.parseMultiplicativeExpression();
+        while (this.nextIs("additive")) {
+            let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseMultiplicativeExpression();
-            let node = {
+            if (!operandsMatch(node.returnType, right.returnType))
+                throw new TokenError(operation, `Cannot add a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} by a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
+            if (left.returnType === "address" || right.returnType === "address")
+                (0, diagnostics_1.tokenNonError)(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
+            node = {
                 type: "binary expression",
+                returnType: "integer",
                 left: left,
                 operation: operation,
                 right: right
             };
-            return node;
         }
-        return left;
+        return node;
     }
     parseMultiplicativeExpression() {
-        let left = this.parseUnaryExpression();
-        if (this.nextIs("multiplicative")) {
+        let node = this.parseUnaryExpression();
+        while (this.nextIs("multiplicative")) {
+            let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseUnaryExpression();
-            let node = {
+            if (!operandsMatch(node.returnType, right.returnType))
+                throw new TokenError(operation, `Cannot multiply a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} by a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
+            if (left.returnType === "address" || right.returnType === "address")
+                (0, diagnostics_1.tokenNonError)(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
+            node = {
                 type: "binary expression",
+                returnType: "integer",
                 left: left,
                 operation: operation,
                 right: right
             };
-            return node;
         }
-        return left;
+        return node;
     }
     parseExpression() {
         return this.parseBinaryExpression();
@@ -300,49 +365,115 @@ class Parser {
         if (this.nextIs("identifier") && this.nextNextIs("left parentheses")) {
             let literal = this.parseLiteral();
             this.next("left parentheses");
-            let node = { type: "function call" };
-            node.name = literal.value;
-            node.arguments = this.parseExpressionList();
+            let node = { type: "function call", name: literal.value };
+            let argumentCount = 0;
+            if (!this.nextIs("right parentheses")) {
+                node.arguments = this.parseExpressionList();
+                let arg = node.arguments;
+                while (arg) {
+                    argumentCount++;
+                    arg = arg.next;
+                }
+            }
+            if (!this.currentScope.hasFunctionWithName(node.name))
+                throw new TokenError(literal.token, `Function "${node.name}" is undefined`);
+            let scopeFunction = this.currentScope.allFunctions.find(func => func.name === node.name);
+            if (scopeFunction.argumentCount !== argumentCount)
+                throw new TokenError(literal.token, `Incorrect number of arguments: Expected ${scopeFunction.argumentCount} argument${scopeFunction.argumentCount === 1 ? "" : "s"} but received ${argumentCount}`);
             this.next("right parentheses");
-            return node;
+            return {
+                type: node.type,
+                returnType: "any",
+                left: node,
+                operation: literal.token
+            };
         }
         if (this.nextIs("integer") || this.nextIs("character") || this.nextIs("string")) {
-            return this.parseLiteral();
+            let literal = this.parseLiteral();
+            return {
+                ...literal,
+                ...{
+                    returnType: literal.token.type,
+                    left: literal,
+                    operation: literal.token
+                }
+            };
         }
         if (this.nextIs("identifier")) {
             let identifier = this.parseLiteral();
-            if (!this.currentScope.hasVariableWithName(identifier.value))
+            if (!this.currentScope.hasVariableWithName(identifier.value)) {
                 throw new TokenError(identifier.token, `Variable "${identifier.value}" is not defined.`);
-            return identifier;
+            }
+            return {
+                ...identifier,
+                ...{
+                    returnType: "address",
+                    left: identifier,
+                    operation: identifier.token
+                }
+            };
         }
         if (this.nextIs("left parentheses")) {
-            this.next("left parentheses");
+            let operation = this.next("left parentheses");
             let node = { type: "expression" };
             if (!this.nextIs("right parentheses"))
-                node.expressionList = this.parseExpressionList();
+                node.expression = this.parseUnaryExpression();
             this.next("right parentheses");
-            return node;
+            return {
+                ...node,
+                operation: operation,
+                left: node,
+                returnType: node.expression.returnType
+            };
         }
         if (this.nextIs("dot")) {
-            let node = { type: "unary operation expression" };
-            node.operation = this.next("dot").value;
-            node.expression = this.parseExpression();
+            console.log(this.tokens);
+            let operation = this.next('dot');
+            let expression = this.parseUnaryExpression();
+            console.log("AFTER", this.tokens);
+            let node = {
+                type: "dereference",
+                operation: operation,
+                left: expression,
+                returnType: "any"
+            };
             return node;
         }
         if (this.nextIs("minus")) {
-            let node = { type: "negation" };
-            this.next("minus");
-            node.expression = this.parseExpression();
+            let node = {
+                type: "negation",
+                operation: this.next("minus"),
+                left: this.parseUnaryExpression(),
+                returnType: "integer"
+            };
+            return node;
         }
         if (this.nextIs("bitwise not")) {
-            let node = { type: "bitwise negation" };
-            this.next("bitwise not");
-            node.expression = this.parseExpression();
+            let node = {
+                type: "bitwise negation",
+                operation: this.next("bitwise not"),
+                left: this.parseUnaryExpression(),
+                returnType: "integer"
+            };
+            return node;
         }
-        throw new TokenError(this.tokens[0], `Unexpected token: ${this.next().value}`);
+        let next = this.next();
+        throw new TokenError(next, `Unexpected token: "${next.value.replace(/\n/g, "\\n")}" - Expected expression.`);
     }
     parseLiteral() {
         let next = this.next();
+        if (next.type === "string") {
+            let val = next.value.replace(/\\/g, "\\\\");
+            let escapeRegex = /[^\\]\\(\.)/;
+            let match = escapeRegex.exec(val);
+            while (match) {
+                let char = match[1];
+                if (!(char === "b" || char === "n" || char === "r" || char === "t" || char === "\\")) {
+                    throw new TokenError(next, `Invalid escape sequence "\\${char}". Supported escape sequences are \\b, \\n, \\r, \\t, and \\\\`);
+                }
+                match = escapeRegex.exec(val);
+            }
+        }
         return { type: next.type, value: next.value, token: next };
     }
     parseExpressionList() {
@@ -357,7 +488,7 @@ class Parser {
         let node = { type: "if statement" };
         this.next("keyword", "if");
         node.condition = this.parseExpression();
-        this.next("left brace");
+        this.next("left brace", undefined, "if");
         this.next("newline");
         node.body = this.parseStatementList();
         this.next("right brace");
@@ -366,7 +497,7 @@ class Parser {
             if (this.nextIs("keyword", "if"))
                 node.elseBody = this.parseIfStatement();
             else if (this.nextIs("left brace")) {
-                this.next("left brace");
+                this.next("left brace", undefined, "else");
                 this.next("newline");
                 node.elseBody = this.parseStatementList();
                 this.next("right brace");

@@ -22,15 +22,22 @@ export let tokenTypes = {
     "whitespace": /^[ \t]+/,
     "xor": /^\^/,
 
-    "identifier": /^[a-zA-Z_]\w*/,
-    "unrecognized": /^[^\n\t ]+/
+    "identifier": /^[a-zA-Z_]\w*/, // Must be checked after keyword
+    "unrecognized": /^[^\n\t ]+/ // Must be checked last
 }
 
 let tokenTypeNames: (keyof typeof tokenTypes)[] = Object.keys(tokenTypes) as (keyof typeof tokenTypes)[];
 let tokenTypeAmount = tokenTypeNames.length;
 
-export interface Token { type: keyof typeof tokenTypes, value: string, line: number, column: number };
+export interface Token { type: keyof typeof tokenTypes, value: string, line: number, column: number, hasDiagnostic?: boolean };
 
+/**
+ * Performs lexical analysis on a string of Tranquility code.
+ * 
+ * @param code The source code to tokenize
+ * 
+ * @returns A list of tokens generated from the source code
+ */
 export default function tokenize(code: string): Token[] {
     let tokens: Token[] = [];
     let remainingCode = code;
@@ -49,7 +56,7 @@ export default function tokenize(code: string): Token[] {
                 currentIndex += matchedBit.length;
                 if (tokenTypeName === "newline") {
                     currentIndex = 0;
-                    lineNumber++;
+                    lineNumber += matchedBit.length;
                 }
                 matchFound = true;
                 break;

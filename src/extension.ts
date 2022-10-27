@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { subscribeToDocumentChanges } from "./diagnostics";
-import { allHoverDescriptions } from "./documentation";
+import { builtInFunctions } from "./builtins";
 
 export function activate(context: vscode.ExtensionContext): void {
 
@@ -13,7 +13,8 @@ export function activate(context: vscode.ExtensionContext): void {
             let range = document.getWordRangeAtPosition(position);
             let word = document.getText(range);
 
-            if (Object.keys(allHoverDescriptions).includes(word)) return { contents: [allHoverDescriptions[word as keyof typeof allHoverDescriptions]] };
+            let builtinFunction = builtInFunctions.find(func => func.name === word);
+            if (builtinFunction) return { contents: [builtinFunction.description] };
             return null;
         }
     });

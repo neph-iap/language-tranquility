@@ -14,6 +14,7 @@ The extension ships with several features, including
         - Referencing an variable that is not defined
         - Referencing a variable that has not been assigned
         - Duplicate identifier names (including naming a function to the name of a built-in function)
+        - Calling a function with the incorrect number of arguments
     - Warnings
         - Unused variables
 
