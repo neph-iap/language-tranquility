@@ -45,7 +45,7 @@ $ sudo apt-get install nodejs
 $ sudo apt-get install wget
 ```
 
-Next, the Tranquility run command must be registered. Download `setup.bash` and place it anywhere. In the location of the setup file, open CMD or Powershell, run `wsl` to enter WSL, and run `bash ./setup.bash`. This will download all of the necessary scripts; Specifically the tranquility compiler, MTVM, and the tranquility runner.
+Next, the Tranquility run command must be registered. Download `setup.bash` and place it anywhere. In the location of the setup file, open CMD or Powershell, run `wsl` to enter WSL, and run `bash ./setup.bash`. This will download all of the necessary scripts; Specifically the tranquility compiler, MTVM, and the tranquility runner. After this operation is complete you can delete `setup.bash` by navigating to the folder you put it in (if you're not already there) and running `rm setup.bash`.
 
 ## Usage
 Run `tranquility <filename>.t`.
