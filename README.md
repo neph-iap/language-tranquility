@@ -1,5 +1,5 @@
 # Language-Tranquility
-The `language-tranquility` extension for Visual Studio Code provides language support for the Tranquility language developed at Drexel University by Professor Brian Stuart. Compilation is only accessible to Drexel students that can connect to the remote server at `usr123@tux.cs.drexel.edu`.
+The `language-tranquility` extension for Visual Studio Code provides language support for the Tranquility language developed at Drexel University by Professor Brian Stuart.
 
 ## Features
 The extension ships with several features, including
@@ -19,6 +19,8 @@ The extension ships with several features, including
         - Unused variables
 
 ## Windows Setup
+
+The Tranquility compiler is a Linux executable and a native version for Windows does not exist. As such, any Windows users will have to adjust certain parts of their code to be Linux-compatible and compile/run the files themselves on a virtual Linux machine.
 
 ### Newlines
 If you are on Windows, you will need to ensure your new lines do not include carriage returns. On MacOS and Linux, new lines are written as `\n`, but on Windows they include a carriage return and are coded as `\r\n`. The Tranquility compiler is written in Linux and unlike most languages does not ignore new lines, and specifically expects `\n` characters. To set newlines to only `\n` in Visual Studio Code:
@@ -48,5 +50,5 @@ $ sudo apt-get install wget
 Next, the Tranquility run command must be registered. Download `setup.bash` and place it anywhere. In the location of the setup file, open CMD or Powershell, run `wsl` to enter WSL, and run `bash ./setup.bash`. This will download all of the necessary scripts; Specifically the tranquility compiler, MTVM, and the tranquility runner. After this operation is complete you can delete `setup.bash` by navigating to the folder you put it in (if you're not already there) and running `rm setup.bash`.
 
 ## Usage
-Run `tranquility <filename>.t`.
+To compile and run a Tranquility file in Visual Studio Code, run `wsl` to enter WSL in the integrated terminal, then run `tranquility <filename>.t`.
 

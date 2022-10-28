@@ -16,7 +16,7 @@ type ExpressionNode = ASTNode & { resultType?: TranquilityType };
 type IdListNode = ASTNode & { value: string, token: Token, next?: IdListNode };
 type FunDeclNode = ASTNode & { name?: string, body?: ASTNode, arguments?: IdListNode };
 
-type TranquilityType = "any" | "string" | "integer" | "boolean" | "address";
+export type TranquilityType = "any" | "string" | "integer" | "boolean" | "address" | "function";
 
 function operandsMatch(a: TranquilityType, b: TranquilityType): boolean {
     if (a === b) return true;
@@ -31,7 +31,7 @@ type ScopeType = "function" | "loop" | "if" | "global" | "else";
 class Scope {
 
     hasUntil = false;
-    functions: { name: string, argumentCount: number }[] = [];
+    functions: { name: string, parameters: { [key: string]: TranquilityType } }[] = [];
     variables: { name: string, token: Token, type: TranquilityType }[] = [];
 
     /**
@@ -42,15 +42,15 @@ class Scope {
     constructor(public readonly type: ScopeType, public readonly parent?: Scope) {
         if (this.type === "global") {
             if (this.parent) throw "Error: global scope cannot have a parent scope";
-            builtInFunctions.forEach(func => this.functions.push({ name: func.name, argumentCount: func.parameterCount }));
+            builtInFunctions.forEach(func => this.functions.push({ name: func.name, parameters: func.parameters }));
         }
     }
 
     /**
      * All functions in this scope, as well as any parent of this scope (direct or not)
      */
-    get allFunctions(): { name: string, argumentCount: number }[] {
-        let all: { name: string, argumentCount: number }[] = [];
+    get allFunctions(): { name: string, parameters: { [key: string]: TranquilityType } }[] {
+        let all: { name: string, parameters: { [key: string]: TranquilityType }}[] = [];
         let scope: Scope | undefined = this;
         while (scope) {
             scope.functions.forEach(func => all.push(func));
@@ -255,7 +255,7 @@ export default class Parser {
         this.next("newline");
 
         let node: FunDeclNode = { type: "function declaration", name: name };
-        let scopeFunction = { name: name, argumentCount: -1 }
+        let scopeFunction: { name: string, parameters: { [key: string]: TranquilityType }} = { name: name, parameters: {} }
         this.currentScope.parent!.functions.push(scopeFunction);
 
         let param = args;
@@ -263,10 +263,9 @@ export default class Parser {
         while (param) {
             this.currentScope.variables.push({ name: param.value, token: param.token, type: "any" });
             parameterCount++;
+            scopeFunction.parameters[param.token.value] = "any"
             param = param.next!;
         }
-
-        scopeFunction.argumentCount = parameterCount;
 
         let body: ASTNode & { varList?: ASTNode, statementList?: ASTNode } = { type: "function body" };
         if (this.nextIs("keyword", "var")) body.varList = this.parseVarList();
@@ -722,16 +721,18 @@ export default class Parser {
             // Create node with function name
             let literal = this.parseLiteral();
             this.next("left parentheses");
-            let node: ASTNode & { name: string, arguments?: ExpressionListNode } = { type: "function call", name: literal.value };
+            let node: ASTNode & { name: string, arguments?: ArithmeticNode & { next?: ArithmeticNode } } = { type: "function call", name: literal.value };
 
             // Get number of arguments and parse them
-            let argumentCount = 0;
+            let args: { [key: string]: TranquilityType } = {};
             if (!this.nextIs("right parentheses")) {
                 node.arguments = this.parseExpressionList();
                 let arg = node.arguments;
+                let i = 0;
                 while (arg) {
-                    argumentCount++;
+                    args[String(i)] = arg.returnType
                     arg = arg.next!;
+                    i++;
                 }
             }
 
@@ -739,8 +740,16 @@ export default class Parser {
             if (!this.currentScope.hasFunctionWithName(node.name)) throw new TokenError(literal.token, `Function "${node.name}" is undefined`);
 
             // Error if calling with incorrect number of arguments
+            let argumentCount = Object.keys(args).length;
             let scopeFunction = this.currentScope.allFunctions.find(func => func.name === node.name)!;
-            if (scopeFunction.argumentCount !== argumentCount) throw new TokenError(literal.token, `Incorrect number of arguments: Expected ${scopeFunction.argumentCount} argument${scopeFunction.argumentCount === 1 ? "" : "s"} but received ${argumentCount}`);
+            let parameterCount = Object.keys(scopeFunction.parameters).length;
+            if (parameterCount !== argumentCount) throw new TokenError(literal.token, `Incorrect number of arguments: Expected ${parameterCount} argument${parameterCount === 1 ? "" : "s"} but received ${argumentCount}`);
+
+            // Error if incorrect argument types
+            let i = 0;
+            Object.keys(scopeFunction.parameters).forEach(param => {
+                if (!operandsMatch(scopeFunction.parameters[param], args[i])) throw new TokenError(literal.token, `Incorrect function call - Parameter "${param}" of type "${scopeFunction.parameters[param]}" is not assignable to argument of type "${args[i]}"`);
+            })
 
             this.next("right parentheses");
             return {
@@ -852,8 +861,8 @@ export default class Parser {
         return { type: next.type, value: next.value, token: next };
     }
 
-    private parseExpressionList(): ExpressionListNode {
-        let expression: ExpressionListNode = this.parseExpression();
+    private parseExpressionList(): ArithmeticNode & { next?: ArithmeticNode } {
+        let expression: ArithmeticNode & { next?: ArithmeticNode } = this.parseExpression();
         if (this.nextIs("comma")) {
             this.next("comma");
             expression.next = this.parseExpression();

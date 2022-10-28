@@ -27,7 +27,7 @@ class Scope {
         if (this.type === "global") {
             if (this.parent)
                 throw "Error: global scope cannot have a parent scope";
-            builtins_1.builtInFunctions.forEach(func => this.functions.push({ name: func.name, argumentCount: func.parameterCount }));
+            builtins_1.builtInFunctions.forEach(func => this.functions.push({ name: func.name, parameters: func.parameters }));
         }
     }
     get allFunctions() {
@@ -126,16 +126,16 @@ class Parser {
         this.next("left brace", undefined, "function");
         this.next("newline");
         let node = { type: "function declaration", name: name };
-        let scopeFunction = { name: name, argumentCount: -1 };
+        let scopeFunction = { name: name, parameters: {} };
         this.currentScope.parent.functions.push(scopeFunction);
         let param = args;
         let parameterCount = 0;
         while (param) {
             this.currentScope.variables.push({ name: param.value, token: param.token, type: "any" });
             parameterCount++;
+            scopeFunction.parameters[param.token.value] = "any";
             param = param.next;
         }
-        scopeFunction.argumentCount = parameterCount;
         let body = { type: "function body" };
         if (this.nextIs("keyword", "var"))
             body.varList = this.parseVarList();
@@ -366,20 +366,29 @@ class Parser {
             let literal = this.parseLiteral();
             this.next("left parentheses");
             let node = { type: "function call", name: literal.value };
-            let argumentCount = 0;
+            let args = {};
             if (!this.nextIs("right parentheses")) {
                 node.arguments = this.parseExpressionList();
                 let arg = node.arguments;
+                let i = 0;
                 while (arg) {
-                    argumentCount++;
+                    args[String(i)] = arg.returnType;
                     arg = arg.next;
+                    i++;
                 }
             }
             if (!this.currentScope.hasFunctionWithName(node.name))
                 throw new TokenError(literal.token, `Function "${node.name}" is undefined`);
+            let argumentCount = Object.keys(args).length;
             let scopeFunction = this.currentScope.allFunctions.find(func => func.name === node.name);
-            if (scopeFunction.argumentCount !== argumentCount)
-                throw new TokenError(literal.token, `Incorrect number of arguments: Expected ${scopeFunction.argumentCount} argument${scopeFunction.argumentCount === 1 ? "" : "s"} but received ${argumentCount}`);
+            let parameterCount = Object.keys(scopeFunction.parameters).length;
+            if (parameterCount !== argumentCount)
+                throw new TokenError(literal.token, `Incorrect number of arguments: Expected ${parameterCount} argument${parameterCount === 1 ? "" : "s"} but received ${argumentCount}`);
+            let i = 0;
+            Object.keys(scopeFunction.parameters).forEach(param => {
+                if (!operandsMatch(scopeFunction.parameters[param], args[i]))
+                    throw new TokenError(literal.token, `Incorrect function call - Parameter "${param}" of type "${scopeFunction.parameters[param]}" is not assignable to argument of type "${args[i]}"`);
+            });
             this.next("right parentheses");
             return {
                 type: node.type,
