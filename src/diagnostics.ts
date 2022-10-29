@@ -3,7 +3,7 @@ import tokenize, { Token } from "./lexer";
 import Parser, { TokenError } from "./parser";
 
 export function refreshDiagnostics(doc: vscode.TextDocument, tranqDiagnostics: vscode.DiagnosticCollection): void {
-    if (!/.t(ranq)?$/i.test(doc.uri.path)) return;
+    if (!/\.t$/i.test(doc.uri.path)) return;
 
     let diagnostics: vscode.Diagnostic[] = [];
 

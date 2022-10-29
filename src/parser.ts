@@ -561,7 +561,8 @@ export default class Parser {
             
             // Check arithmetic
             if (!operandsMatch(node.returnType, right.returnType)) throw new TokenError(operation, `Cannot compare a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} to a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
-            
+            if (left.returnType === "address" || right.returnType === "address") tokenNonError(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
+
             // Reconstruct the node with the LHS, operation, and RHS.
             node = {
                 type: "binary expression",

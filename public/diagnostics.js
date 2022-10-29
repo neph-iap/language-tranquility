@@ -5,7 +5,7 @@ const vscode = require("vscode");
 const lexer_1 = require("./lexer");
 const parser_1 = require("./parser");
 function refreshDiagnostics(doc, tranqDiagnostics) {
-    if (!/.t(ranq)?$/i.test(doc.uri.path))
+    if (!/\.t$/i.test(doc.uri.path))
         return;
     let diagnostics = [];
     try {

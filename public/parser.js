@@ -288,6 +288,8 @@ class Parser {
             let right = this.parseBitwiseShiftExpression();
             if (!operandsMatch(node.returnType, right.returnType))
                 throw new TokenError(operation, `Cannot compare a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} to a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
+            if (left.returnType === "address" || right.returnType === "address")
+                (0, diagnostics_1.tokenNonError)(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
             node = {
                 type: "binary expression",
                 returnType: "boolean",
