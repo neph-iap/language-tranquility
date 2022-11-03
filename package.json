@@ -44,6 +44,10 @@
 		"onLanguage:tranquility"
 	],
 	"devDependencies": {
+		"process": "^0.11.10",
 		"vscode": "^1.1.37"
+	},
+	"dependencies": {
+		"@types/node": "^18.11.9"
 	}
 }
