@@ -1,5 +1,5 @@
 export let tokenTypes = {
-    "additive": /^[\+\-]/,
+    "plus": /^\+/,
     "bitwise comparison": /^[\&\|]/,
     "bitwise shift": /^(<<|>>)/,
     "bitwise not": /\~/,
@@ -54,9 +54,10 @@ export default function tokenize(code: string): Token[] {
                 if (tokenTypeName !== "whitespace" && tokenTypeName !== "comment") tokens.push({ type: tokenTypeName, value: matchedBit, line: lineNumber, column: currentIndex });
                 remainingCode = remainingCode.substring(matchedBit.length);
                 currentIndex += matchedBit.length;
-                if (tokenTypeName === "newline") {
+                let newlineCount = (matchedBit.match(/\n/g) || []).length;
+                if (newlineCount) {
                     currentIndex = 0;
-                    lineNumber += matchedBit.length;
+                    lineNumber += newlineCount
                 }
                 matchFound = true;
                 break;
@@ -64,5 +65,12 @@ export default function tokenize(code: string): Token[] {
         }
         if (!matchFound) throw `Error: No match found for ${remainingCode}`;
     }
-    return tokens;
+
+    // Merge newlines
+    let tokenCopy: Token[] = [];
+    tokens.forEach(token => {
+        if (token.type !== "newline" || (token.type === "newline" && tokenCopy[tokenCopy.length - 1]?.type !== "newline")) tokenCopy.push(token);
+    });
+
+    return tokenCopy;
 }

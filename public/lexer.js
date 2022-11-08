@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.tokenTypes = void 0;
 exports.tokenTypes = {
-    "additive": /^[\+\-]/,
+    "plus": /^\+/,
     "bitwise comparison": /^[\&\|]/,
     "bitwise shift": /^(<<|>>)/,
     "bitwise not": /\~/,
@@ -47,9 +47,10 @@ function tokenize(code) {
                     tokens.push({ type: tokenTypeName, value: matchedBit, line: lineNumber, column: currentIndex });
                 remainingCode = remainingCode.substring(matchedBit.length);
                 currentIndex += matchedBit.length;
-                if (tokenTypeName === "newline") {
+                let newlineCount = (matchedBit.match(/\n/g) || []).length;
+                if (newlineCount) {
                     currentIndex = 0;
-                    lineNumber += matchedBit.length;
+                    lineNumber += newlineCount;
                 }
                 matchFound = true;
                 break;
@@ -58,6 +59,11 @@ function tokenize(code) {
         if (!matchFound)
             throw `Error: No match found for ${remainingCode}`;
     }
-    return tokens;
+    let tokenCopy = [];
+    tokens.forEach(token => {
+        if (token.type !== "newline" || (token.type === "newline" && tokenCopy[tokenCopy.length - 1]?.type !== "newline"))
+            tokenCopy.push(token);
+    });
+    return tokenCopy;
 }
 exports.default = tokenize;

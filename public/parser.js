@@ -68,12 +68,16 @@ exports.TokenError = TokenError;
 class Parser {
     tokens;
     diagnostics;
+    functionCallTokens = [];
     currentScope = new Scope("global");
+    lastConsumed;
     constructor(tokens, diagnostics) {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
     }
     next(expectedType, expectedValue, scopeType) {
+        if (!this.tokens.length)
+            throw new TokenError(this.lastConsumed, `Unexpected end of file: Expected type ${expectedType}`);
         if (expectedType && this.tokens[0].type !== expectedType)
             throw new TokenError(this.tokens[0], `Expected type ${expectedType} but found ${this.tokens[0].type}`);
         if (expectedValue && this.tokens[0].value !== expectedValue)
@@ -82,9 +86,12 @@ class Parser {
             this.currentScope = this.currentScope.parent;
         else if (this.nextIs("left brace"))
             this.currentScope = new Scope(scopeType, this.currentScope);
+        this.lastConsumed = this.tokens[0];
         return this.tokens.shift();
     }
     nextIs(expectedType, expectedValue) {
+        if (!this.tokens.length)
+            return false;
         if (!expectedValue)
             return this.tokens[0].type === expectedType;
         return this.tokens[0].type === expectedType && this.tokens[0].value === expectedValue;
@@ -96,21 +103,47 @@ class Parser {
     }
     parse() {
         let node = { type: "program" };
-        if (this.nextIs("keyword", "var"))
-            node.varList = this.parseVarList();
-        if (this.nextIs("keyword", "fun"))
-            node.funList = this.parseFunctionList();
-        else {
+        while (this.nextIs("newline"))
+            this.next("newline");
+        while (this.nextIs("newline") || this.nextIs("keyword", "var")) {
+            while (this.nextIs("newline"))
+                this.next("newline");
+            while (this.nextIs("keyword", "var"))
+                node.varList = this.parseVarList();
+        }
+        while (this.nextIs("newline"))
+            this.next("newline");
+        while (this.nextIs("newline") || this.nextIs("keyword", "fun")) {
+            while (this.nextIs("newline"))
+                this.next("newline");
+            while (this.nextIs("keyword", "fun"))
+                node.funList = this.parseFunctionList();
+        }
+        if (this.tokens.length) {
             let next = this.next();
             throw new TokenError(next, `Unexpected token "${next.value}" - Expected a function list or variable list`);
         }
+        this.detectErrors();
+        console.log(this.tokens);
         return node;
     }
+    detectErrors() {
+        this.functionCallTokens.forEach(func => {
+            if (!func.scope.hasFunctionWithName(func.name)) {
+                console.log(func.scope);
+                console.log(func.scope.allFunctions);
+                throw new TokenError(func.token, `Function "${func.name}" is undefined`);
+            }
+        });
+    }
     parseFunctionList() {
-        let node = this.parseFunctionDeclaration();
-        if (this.nextIs("keyword", "fun"))
+        let origNode = this.parseFunctionDeclaration();
+        let node = origNode;
+        while (this.nextIs("keyword", "fun")) {
             node.next = this.parseFunctionDeclaration();
-        return node;
+            node = node.next;
+        }
+        return origNode;
     }
     parseFunctionDeclaration() {
         this.next("keyword", "fun");
@@ -128,6 +161,9 @@ class Parser {
         let node = { type: "function declaration", name: name };
         let scopeFunction = { name: name, parameters: {} };
         this.currentScope.parent.functions.push(scopeFunction);
+        console.log(name);
+        console.log("DECL:", this.currentScope.allFunctions);
+        console.log(this.currentScope.parent.functions);
         let param = args;
         let parameterCount = 0;
         while (param) {
@@ -214,6 +250,7 @@ class Parser {
             return node;
         }
         if (this.nextIs("keyword", "return")) {
+            this.next("keyword", "return");
             let node = { type: "return statement" };
             if (this.nextIs("newline")) {
                 this.next("newline");
@@ -322,7 +359,7 @@ class Parser {
     }
     parseAdditiveExpression() {
         let node = this.parseMultiplicativeExpression();
-        while (this.nextIs("additive")) {
+        while (this.nextIs("plus") || this.nextIs("minus")) {
             let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseMultiplicativeExpression();
@@ -363,6 +400,19 @@ class Parser {
     parseExpression() {
         return this.parseBinaryExpression();
     }
+    parseParenthesizedExpression() {
+        let operation = this.next("left parentheses");
+        let node = { type: "expression" };
+        if (!this.nextIs("right parentheses"))
+            node.expression = this.parseExpression();
+        this.next("right parentheses");
+        return {
+            ...node,
+            operation: operation,
+            left: node,
+            returnType: node.expression.returnType
+        };
+    }
     parseUnaryExpression() {
         if (this.nextIs("identifier") && this.nextNextIs("left parentheses")) {
             let literal = this.parseLiteral();
@@ -379,18 +429,7 @@ class Parser {
                     i++;
                 }
             }
-            if (!this.currentScope.hasFunctionWithName(node.name))
-                throw new TokenError(literal.token, `Function "${node.name}" is undefined`);
-            let argumentCount = Object.keys(args).length;
-            let scopeFunction = this.currentScope.allFunctions.find(func => func.name === node.name);
-            let parameterCount = Object.keys(scopeFunction.parameters).length;
-            if (parameterCount !== argumentCount)
-                throw new TokenError(literal.token, `Incorrect number of arguments: Expected ${parameterCount} argument${parameterCount === 1 ? "" : "s"} but received ${argumentCount}`);
-            let i = 0;
-            Object.keys(scopeFunction.parameters).forEach(param => {
-                if (!operandsMatch(scopeFunction.parameters[param], args[i]))
-                    throw new TokenError(literal.token, `Incorrect function call - Parameter "${param}" of type "${scopeFunction.parameters[param]}" is not assignable to argument of type "${args[i]}"`);
-            });
+            this.functionCallTokens.push({ token: literal.token, name: node.name, scope: this.currentScope });
             this.next("right parentheses");
             return {
                 type: node.type,
@@ -398,6 +437,9 @@ class Parser {
                 left: node,
                 operation: literal.token
             };
+        }
+        if (this.nextIs("left parentheses")) {
+            return this.parseParenthesizedExpression();
         }
         if (this.nextIs("integer") || this.nextIs("character") || this.nextIs("string")) {
             let literal = this.parseLiteral();
@@ -424,24 +466,9 @@ class Parser {
                 }
             };
         }
-        if (this.nextIs("left parentheses")) {
-            let operation = this.next("left parentheses");
-            let node = { type: "expression" };
-            if (!this.nextIs("right parentheses"))
-                node.expression = this.parseUnaryExpression();
-            this.next("right parentheses");
-            return {
-                ...node,
-                operation: operation,
-                left: node,
-                returnType: node.expression.returnType
-            };
-        }
         if (this.nextIs("dot")) {
-            console.log(this.tokens);
             let operation = this.next('dot');
             let expression = this.parseUnaryExpression();
-            console.log("AFTER", this.tokens);
             let node = {
                 type: "dereference",
                 operation: operation,
@@ -451,24 +478,27 @@ class Parser {
             return node;
         }
         if (this.nextIs("minus")) {
+            let op = this.next("minus");
             let node = {
                 type: "negation",
-                operation: this.next("minus"),
+                operation: op,
                 left: this.parseUnaryExpression(),
                 returnType: "integer"
             };
             return node;
         }
         if (this.nextIs("bitwise not")) {
+            let op = this.next("bitwise not");
             let node = {
                 type: "bitwise negation",
-                operation: this.next("bitwise not"),
+                operation: op,
                 left: this.parseUnaryExpression(),
                 returnType: "integer"
             };
             return node;
         }
         let next = this.next();
+        console.log(next.type);
         throw new TokenError(next, `Unexpected token: "${next.value.replace(/\n/g, "\\n")}" - Expected expression.`);
     }
     parseLiteral() {

@@ -50,7 +50,7 @@ class Scope {
      * All functions in this scope, as well as any parent of this scope (direct or not)
      */
     get allFunctions(): { name: string, parameters: { [key: string]: TranquilityType } }[] {
-        let all: { name: string, parameters: { [key: string]: TranquilityType }}[] = [];
+        let all: { name: string, parameters: { [key: string]: TranquilityType } }[] = [];
         let scope: Scope | undefined = this;
         while (scope) {
             scope.functions.forEach(func => all.push(func));
@@ -117,10 +117,14 @@ export class TokenError extends Error {
  */
 export default class Parser {
 
+    private functionCallTokens: { name: string, token: Token, scope: Scope }[] = [];
+
     /**
      * The current scope of the parser.
      */
     private currentScope: Scope = new Scope("global");
+
+    private lastConsumed: Token;
 
     /** 
      * Creates a new parser.
@@ -139,6 +143,7 @@ export default class Parser {
      * @returns The removed token.
      */
     private next(expectedType?: keyof typeof tokenTypes, expectedValue?: string, scopeType?: ScopeType): Token {
+        if (!this.tokens.length) throw new TokenError(this.lastConsumed, `Unexpected end of file: Expected type ${expectedType}`);
         if (expectedType && this.tokens[0].type !== expectedType) throw new TokenError(this.tokens[0], `Expected type ${expectedType} but found ${this.tokens[0].type}`);
         if (expectedValue && this.tokens[0].value !== expectedValue) throw new TokenError(this.tokens[0], `Expected ${expectedValue} but found ${this.tokens[0].value}`);
 
@@ -147,6 +152,8 @@ export default class Parser {
 
         // If the next token is a left brace, enter a new scope with the old scope as the parent.
         else if (this.nextIs("left brace")) this.currentScope = new Scope(scopeType!, this.currentScope);
+
+        this.lastConsumed = this.tokens[0];
 
         return this.tokens.shift()!;
     }
@@ -160,6 +167,7 @@ export default class Parser {
      * @returns whether or not the next token matches the given type and value if given.
      */
     private nextIs(expectedType: keyof typeof tokenTypes, expectedValue?: string): boolean {
+        if (!this.tokens.length) return false;
         if (!expectedValue) return this.tokens[0].type === expectedType;
         return this.tokens[0].type === expectedType && this.tokens[0].value === expectedValue;
     }
@@ -196,14 +204,36 @@ export default class Parser {
      * @see `<fun-list>`: {@link parseFunctionList FunctionList}
      */
     parse(): ASTNode {
-        let node: ASTNode & { varList?: ASTNode, funList?: ASTNode } = { type: "program" };
-        if (this.nextIs("keyword", "var")) node.varList = this.parseVarList();
-        if (this.nextIs("keyword", "fun")) node.funList = this.parseFunctionList();
-        else {
+        let node: ASTNode & { varList?: ASTNode, funList?: ASTNode, next?: any } = { type: "program" };
+        while (this.nextIs("newline")) this.next("newline");
+        while (this.nextIs("newline") || this.nextIs("keyword", "var")) {
+            while (this.nextIs("newline")) this.next("newline");
+            while (this.nextIs("keyword", "var")) node.varList = this.parseVarList();
+        }
+        while (this.nextIs("newline")) this.next("newline");
+        while (this.nextIs("newline") || this.nextIs("keyword", "fun")) {
+            while (this.nextIs("newline")) this.next("newline");
+            while (this.nextIs("keyword", "fun")) node.funList = this.parseFunctionList();
+        }
+
+        if (this.tokens.length) {
             let next = this.next();
             throw new TokenError(next, `Unexpected token "${next.value}" - Expected a function list or variable list`);
         }
+        
+        this.detectErrors();
+        console.log(this.tokens);
         return node;
+    }
+
+    private detectErrors() {
+        this.functionCallTokens.forEach(func => {
+            if (!func.scope.hasFunctionWithName(func.name)) {
+                console.log(func.scope);
+                console.log(func.scope.allFunctions);
+                throw new TokenError(func.token, `Function "${func.name}" is undefined`);
+            }
+        });
     }
 
     /**
@@ -222,9 +252,13 @@ export default class Parser {
      * @see `<fun-decl>`: {@link parseFunctionDeclaration FunctionDeclaration}
      */
     private parseFunctionList(): ASTNode {
-        let node: FunDeclNode & { next?: FunDeclNode } = this.parseFunctionDeclaration();
-        if (this.nextIs("keyword", "fun")) node.next = this.parseFunctionDeclaration();
-        return node;
+        let origNode: FunDeclNode & { next?: FunDeclNode } = this.parseFunctionDeclaration();
+        let node = origNode
+        while (this.nextIs("keyword", "fun")) {
+            node.next = this.parseFunctionDeclaration();
+            node = node.next;
+        }
+        return origNode;
     }
 
     /**
@@ -255,8 +289,11 @@ export default class Parser {
         this.next("newline");
 
         let node: FunDeclNode = { type: "function declaration", name: name };
-        let scopeFunction: { name: string, parameters: { [key: string]: TranquilityType }} = { name: name, parameters: {} }
+        let scopeFunction: { name: string, parameters: { [key: string]: TranquilityType } } = { name: name, parameters: {} }
         this.currentScope.parent!.functions.push(scopeFunction);
+        console.log(name);
+        console.log("DECL:", this.currentScope.allFunctions);
+        console.log(this.currentScope.parent!.functions)
 
         let param = args;
         let parameterCount = 0;
@@ -419,6 +456,7 @@ export default class Parser {
 
         // Return statement
         if (this.nextIs("keyword", "return")) {
+            this.next("keyword", "return");
             let node: ASTNode & { expression?: ASTNode } = { type: "return statement" };
             if (this.nextIs("newline")) {
                 this.next("newline");
@@ -474,11 +512,11 @@ export default class Parser {
             let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseBitwiseComparisonExpression();
-            
+
             // Check arithmetic
             if (!operandsMatch(node.returnType, right.returnType)) throw new TokenError(operation, `Cannot XOR a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} with a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
             if (left.returnType === "address" || right.returnType === "address") tokenNonError(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
-            
+
             // Reconstruct the node with the LHS, operation, and RHS.
             node = {
                 type: "binary expression",
@@ -514,11 +552,11 @@ export default class Parser {
             let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseComparisonExpression();
-            
+
             // Check arithmetic
             if (!operandsMatch(node.returnType, right.returnType)) throw new TokenError(operation, `Cannot bitwise compare a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} to a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
             if (left.returnType === "address" || right.returnType === "address") tokenNonError(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
-            
+
             // Reconstruct the node with the LHS, operation, and RHS.
             node = {
                 type: "binary expression",
@@ -558,7 +596,7 @@ export default class Parser {
             let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseBitwiseShiftExpression();
-            
+
             // Check arithmetic
             if (!operandsMatch(node.returnType, right.returnType)) throw new TokenError(operation, `Cannot compare a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} to a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
             if (left.returnType === "address" || right.returnType === "address") tokenNonError(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
@@ -598,11 +636,11 @@ export default class Parser {
             let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseAdditiveExpression();
-            
+
             // Check arithmetic
             if (!operandsMatch(node.returnType, right.returnType)) throw new TokenError(operation, `Cannot shift a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} by a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
             if (left.returnType === "address" || right.returnType === "address") tokenNonError(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
-            
+
             // Reconstruct the node with the LHS, operation, and RHS.
             node = {
                 type: "binary expression",
@@ -633,17 +671,17 @@ export default class Parser {
      */
     private parseAdditiveExpression(): ArithmeticNode {
         let node = this.parseMultiplicativeExpression();
-        while (this.nextIs("additive")) {
+        while (this.nextIs("plus") || this.nextIs("minus")) {
 
             // Set the LHS to the node and parse the operation and RHS
             let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseMultiplicativeExpression();
-            
+
             // Check arithmetic
             if (!operandsMatch(node.returnType, right.returnType)) throw new TokenError(operation, `Cannot add a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} by a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
             if (left.returnType === "address" || right.returnType === "address") tokenNonError(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
-            
+
             // Reconstruct the node with the LHS, operation, and RHS.
             node = {
                 type: "binary expression",
@@ -680,11 +718,11 @@ export default class Parser {
             let left = node;
             let operation = this.parseLiteral().token;
             let right = this.parseUnaryExpression();
-            
+
             // Check arithmetic
             if (!operandsMatch(node.returnType, right.returnType)) throw new TokenError(operation, `Cannot multiply a${/^[aeiou]/.test(left.returnType) ? "n" : ""} ${left.returnType} by a${/^[aeiou]/.test(right.returnType) ? "n" : ""} ${right.returnType}`);
             if (left.returnType === "address" || right.returnType === "address") tokenNonError(this.diagnostics, operation, `Unsafe pointer arithmetic. Did you mean to get the value stored at a memory location with "."?`, vscode.DiagnosticSeverity.Warning);
-            
+
             // Reconstruct the node with the LHS, operation, and RHS.
             node = {
                 type: "binary expression",
@@ -703,6 +741,19 @@ export default class Parser {
      */
     private parseExpression(): ArithmeticNode {
         return this.parseBinaryExpression();
+    }
+
+    private parseParenthesizedExpression(): ArithmeticNode {
+        let operation = this.next("left parentheses");
+        let node: ExpressionNode & { expression?: ArithmeticNode } = { type: "expression" };
+        if (!this.nextIs("right parentheses")) node.expression = this.parseExpression();
+        this.next("right parentheses");
+        return {
+            ...node,
+            operation: operation,
+            left: node,
+            returnType: node.expression!.returnType
+        }
     }
 
     /**
@@ -737,20 +788,19 @@ export default class Parser {
                 }
             }
 
-            // Error if function does not exist
-            if (!this.currentScope.hasFunctionWithName(node.name)) throw new TokenError(literal.token, `Function "${node.name}" is undefined`);
+            this.functionCallTokens.push({ token: literal.token, name: node.name, scope: this.currentScope });
 
-            // Error if calling with incorrect number of arguments
-            let argumentCount = Object.keys(args).length;
-            let scopeFunction = this.currentScope.allFunctions.find(func => func.name === node.name)!;
-            let parameterCount = Object.keys(scopeFunction.parameters).length;
-            if (parameterCount !== argumentCount) throw new TokenError(literal.token, `Incorrect number of arguments: Expected ${parameterCount} argument${parameterCount === 1 ? "" : "s"} but received ${argumentCount}`);
+            // Error if calling with incorrect number of arguments TODO MOVE TO DIAGNOSTIC
+            // let argumentCount = Object.keys(args).length;
+            // let scopeFunction = this.currentScope.allFunctions.find(func => func.name === node.name)!;
+            // let parameterCount = Object.keys(scopeFunction.parameters).length;
+            // if (parameterCount !== argumentCount) throw new TokenError(literal.token, `Incorrect number of arguments: Expected ${parameterCount} argument${parameterCount === 1 ? "" : "s"} but received ${argumentCount}`);
 
             // Error if incorrect argument types
-            let i = 0;
-            Object.keys(scopeFunction.parameters).forEach(param => {
-                if (!operandsMatch(scopeFunction.parameters[param], args[i])) throw new TokenError(literal.token, `Incorrect function call - Parameter "${param}" of type "${scopeFunction.parameters[param]}" is not assignable to argument of type "${args[i]}"`);
-            })
+            // let i = 0;
+            // Object.keys(scopeFunction.parameters).forEach(param => {
+            //     if (!operandsMatch(scopeFunction.parameters[param], args[i])) throw new TokenError(literal.token, `Incorrect function call - Parameter "${param}" of type "${scopeFunction.parameters[param]}" is not assignable to argument of type "${args[i]}"`);
+            // })
 
             this.next("right parentheses");
             return {
@@ -759,6 +809,11 @@ export default class Parser {
                 left: node,
                 operation: literal.token
             };
+        }
+
+        // Parenthesized Expression
+        if (this.nextIs("left parentheses")) {
+            return this.parseParenthesizedExpression();
         }
 
         // Literal Expression
@@ -790,26 +845,10 @@ export default class Parser {
             };
         }
 
-        // Parenthesized expression
-        if (this.nextIs("left parentheses")) {
-            let operation = this.next("left parentheses");
-            let node: ExpressionNode & { expression?: ArithmeticNode } = { type: "expression" };
-            if (!this.nextIs("right parentheses")) node.expression = this.parseUnaryExpression();
-            this.next("right parentheses");
-            return {
-                ...node,
-                operation: operation,
-                left: node,
-                returnType: node.expression!.returnType
-            }
-        }
-
         // Dereferencing
         if (this.nextIs("dot")) {
-            console.log(this.tokens);
             let operation = this.next('dot');
             let expression = this.parseUnaryExpression();
-            console.log("AFTER", this.tokens);
             let node: ArithmeticNode = {
                 type: "dereference",
                 operation: operation,
@@ -821,9 +860,10 @@ export default class Parser {
 
         // Unary negation
         if (this.nextIs("minus")) {
+            let op = this.next("minus");
             let node: ArithmeticNode = {
                 type: "negation",
-                operation: this.next("minus"),
+                operation: op,
                 left: this.parseUnaryExpression(),
                 returnType: "integer"
             };
@@ -832,9 +872,10 @@ export default class Parser {
 
         // Bitwise negation
         if (this.nextIs("bitwise not")) {
+            let op = this.next("bitwise not");
             let node: ArithmeticNode = {
                 type: "bitwise negation",
-                operation: this.next("bitwise not"),
+                operation: op,
                 left: this.parseUnaryExpression(),
                 returnType: "integer"
             };
@@ -842,6 +883,7 @@ export default class Parser {
         }
 
         let next = this.next();
+        console.log(next.type);
         throw new TokenError(next, `Unexpected token: "${next.value.replace(/\n/g, "\\n")}" - Expected expression.`);
     }
 
