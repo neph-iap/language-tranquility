@@ -49,7 +49,7 @@ class Scope {
         return all;
     }
     hasVariableWithName(name) {
-        return this.allVariables.map(variable => variable.name).includes(name);
+        return [...this.allVariables, ...this.allFunctions].map(variable => variable.name).includes(name);
     }
     hasFunctionWithName(name) {
         return this.allFunctions.map(func => func.name).includes(name);
@@ -69,6 +69,7 @@ class Parser {
     tokens;
     diagnostics;
     functionCallTokens = [];
+    variableReferences = [];
     currentScope = new Scope("global");
     lastConsumed;
     constructor(tokens, diagnostics) {
@@ -130,9 +131,12 @@ class Parser {
     detectErrors() {
         this.functionCallTokens.forEach(func => {
             if (!func.scope.hasFunctionWithName(func.name)) {
-                console.log(func.scope);
-                console.log(func.scope.allFunctions);
                 throw new TokenError(func.token, `Function "${func.name}" is undefined`);
+            }
+        });
+        this.variableReferences.forEach(variable => {
+            if (!variable.scope.hasVariableWithName(variable.name)) {
+                throw new TokenError(variable.token, `Function "${variable.name}" is undefined`);
             }
         });
     }
@@ -454,9 +458,7 @@ class Parser {
         }
         if (this.nextIs("identifier")) {
             let identifier = this.parseLiteral();
-            if (!this.currentScope.hasVariableWithName(identifier.value)) {
-                throw new TokenError(identifier.token, `Variable "${identifier.value}" is not defined.`);
-            }
+            this.variableReferences.push({ name: identifier.value, scope: this.currentScope, token: identifier.token, });
             return {
                 ...identifier,
                 ...{
@@ -499,7 +501,7 @@ class Parser {
         }
         let next = this.next();
         console.log(next.type);
-        throw new TokenError(next, `Unexpected token: "${next.value.replace(/\n/g, "\\n")}" - Expected expression.`);
+        throw new TokenError(next, `Unexpected token: "${next.value.replace(/\n/g, "\\n")}" of type ${next.type} - Expected expression.`);
     }
     parseLiteral() {
         let next = this.next();
@@ -519,7 +521,7 @@ class Parser {
     }
     parseExpressionList() {
         let expression = this.parseExpression();
-        if (this.nextIs("comma")) {
+        while (this.nextIs("comma")) {
             this.next("comma");
             expression.next = this.parseExpression();
         }
@@ -535,6 +537,7 @@ class Parser {
         this.next("right brace");
         this.next("newline");
         if (this.nextIs("keyword", "else")) {
+            this.next("keyword", "else");
             if (this.nextIs("keyword", "if"))
                 node.elseBody = this.parseIfStatement();
             else if (this.nextIs("left brace")) {
@@ -542,6 +545,7 @@ class Parser {
                 this.next("newline");
                 node.elseBody = this.parseStatementList();
                 this.next("right brace");
+                this.next("newline");
             }
         }
         return node;

@@ -12,11 +12,15 @@ The extension ships with several features, including
         - Unrecognized token type
         - Unexpected token type
         - Referencing an variable that is not defined
-        - Referencing a variable that has not been assigned
-        - Duplicate identifier names (including naming a function to the name of a built-in function)
+        - Duplicate identifier names (including naming a function/variable to the name of a built-in function)
         - Calling a function with the incorrect number of arguments
+        - Creating a loop without an `until` statement
     - Warnings
         - Unused variables
+
+<p align="center">
+    <img src="./assets/demo.gif" style="width: 100%;"/>
+<p>
 
 ## Windows Setup
 
@@ -47,8 +51,8 @@ $ sudo apt-get install nodejs
 $ sudo apt-get install wget
 ```
 
-Next, the Tranquility run command must be registered. Download `setup.bash` and place it anywhere. In the location of the setup file, open CMD or Powershell, run `wsl` to enter WSL, and run `bash ./setup.bash`. This will download all of the necessary scripts; Specifically the tranquility compiler, MTVM, and the tranquility runner. After this operation is complete you can delete `setup.bash` by navigating to the folder you put it in (if you're not already there) and running `rm setup.bash`.
+Next, the Tranquility run command must be registered. Download `setup.bash` and place it anywhere. In the location of the setup file, open CMD or Powershell, run `wsl` to enter WSL, and run `bash ./setup.bash`. This will download all of the necessary scripts; Specifically the tranquility compiler, MTVM, and the tranquility runner. After this operation is complete you can delete `setup.bash` by navigating to the folder you put it in (if you're not already there) and running `rm setup.bash`. Each time you want to compile, run `wsl`.
 
 ## Usage
-To compile and run a Tranquility file in Visual Studio Code, run `wsl` to enter WSL in the integrated terminal, then run `tranquility <filename>.t`.
+To compile, run `tranquility <filename>.t`.
 

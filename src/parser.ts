@@ -80,7 +80,7 @@ class Scope {
      * @return whether or not a variable exists with the given name.
      */
     hasVariableWithName(name: string): boolean {
-        return this.allVariables.map(variable => variable.name).includes(name);
+        return [...this.allVariables, ...this.allFunctions].map(variable => variable.name).includes(name);
     }
 
     /**
@@ -118,6 +118,7 @@ export class TokenError extends Error {
 export default class Parser {
 
     private functionCallTokens: { name: string, token: Token, scope: Scope }[] = [];
+    private variableReferences: { name: string, token: Token, scope: Scope }[] = []
 
     /**
      * The current scope of the parser.
@@ -229,9 +230,13 @@ export default class Parser {
     private detectErrors() {
         this.functionCallTokens.forEach(func => {
             if (!func.scope.hasFunctionWithName(func.name)) {
-                console.log(func.scope);
-                console.log(func.scope.allFunctions);
                 throw new TokenError(func.token, `Function "${func.name}" is undefined`);
+            }
+        });
+        
+        this.variableReferences.forEach(variable => {
+            if (!variable.scope.hasVariableWithName(variable.name)) {
+                throw new TokenError(variable.token, `Function "${variable.name}" is undefined`);
             }
         });
     }
@@ -832,9 +837,7 @@ export default class Parser {
         // Literal Identifier
         if (this.nextIs("identifier")) {
             let identifier = this.parseLiteral();
-            if (!this.currentScope.hasVariableWithName(identifier.value)) {
-                throw new TokenError(identifier.token, `Variable "${identifier.value}" is not defined.`);
-            }
+            this.variableReferences.push({ name: identifier.value, scope: this.currentScope, token: identifier.token, });
             return {
                 ...identifier,
                 ...{
@@ -884,7 +887,7 @@ export default class Parser {
 
         let next = this.next();
         console.log(next.type);
-        throw new TokenError(next, `Unexpected token: "${next.value.replace(/\n/g, "\\n")}" - Expected expression.`);
+        throw new TokenError(next, `Unexpected token: "${next.value.replace(/\n/g, "\\n")}" of type ${next.type} - Expected expression.`);
     }
 
     private parseLiteral(): ASTNode & { value: string, token: Token } {
@@ -906,7 +909,7 @@ export default class Parser {
 
     private parseExpressionList(): ArithmeticNode & { next?: ArithmeticNode } {
         let expression: ArithmeticNode & { next?: ArithmeticNode } = this.parseExpression();
-        if (this.nextIs("comma")) {
+        while (this.nextIs("comma")) {
             this.next("comma");
             expression.next = this.parseExpression();
         }
@@ -924,12 +927,14 @@ export default class Parser {
         this.next("newline"); //huh
 
         if (this.nextIs("keyword", "else")) {
+            this.next("keyword", "else");
             if (this.nextIs("keyword", "if")) node.elseBody = this.parseIfStatement();
             else if (this.nextIs("left brace")) {
                 this.next("left brace", undefined, "else");
                 this.next("newline");
                 node.elseBody = this.parseStatementList();
                 this.next("right brace");
+                this.next("newline");
             }
         }
 
